@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { config } from "@/lib/config";
+import { isDemoMode, simulate } from "@/lib/demo";
 
 export interface HistoryPoint {
-  poolId: string;
   blockNumber: number;
   timestamp: number;
   multiplier: number;
@@ -16,10 +16,29 @@ export interface HistoryPoint {
 }
 
 export function useMultiplierHistory() {
+  const demo = isDemoMode(config.hookAddress);
   const [data, setData] = useState<HistoryPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const demoFrames = useMemo(() => (demo ? simulate({ steps: 240 }) : []), [demo]);
+
   useEffect(() => {
+    if (demo) {
+      setData(
+        demoFrames.map((f) => ({
+          blockNumber: f.blockNumber,
+          timestamp: f.timestamp,
+          multiplier: f.multiplier,
+          treasury: f.treasury,
+          F: f.state.F,
+          V: f.state.V,
+          D: f.state.D,
+          C: f.state.C,
+        })),
+      );
+      return;
+    }
+
     let cancelled = false;
     const tick = async () => {
       try {
@@ -40,7 +59,7 @@ export function useMultiplierHistory() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [demo, demoFrames]);
 
-  return { data, error };
+  return { data, error: demo ? null : error, isDemo: demo };
 }

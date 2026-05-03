@@ -9,19 +9,23 @@ export function InsightBox() {
   const burst = V !== 0 ? Math.abs(V / Math.max(1, Math.abs(F))) : 0;
 
   return (
-    <section className="rounded-2xl border border-ember/40 bg-ember/5 p-6">
-      <h2 className="text-xs uppercase tracking-[0.22em] text-ember">Insight</h2>
-      <p className="mt-3 text-sm leading-relaxed text-bone">
+    <section className="panel p-6">
+      <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
+        Insight
+      </h2>
+      <p className="mt-3 text-[13px] leading-relaxed text-bone/90">
         Buying now costs roughly{" "}
-        <span className="font-mono text-ember">{buyPenaltyPct.toFixed(1)}%</span> more
+        <span className="tabular text-accent">{buyPenaltyPct.toFixed(1)}%</span> more
         than a memoryless AMM. Sellers receive up to{" "}
-        <span className="font-mono text-ember">{sellBonusPct.toFixed(1)}%</span> bonus
+        <span className="tabular text-accent">{sellBonusPct.toFixed(1)}%</span> bonus
         from the treasury.
       </p>
-      <p className="mt-2 text-xs text-ash">
+      <div className="hairline my-4" />
+      <p className="text-[11px] leading-relaxed text-ash">
         Burst ratio V/F ≈{" "}
-        <span className="font-mono">{burst.toFixed(2)}</span>. High burst → recent buying
-        amplifies the multiplier; let it cool to enter cheaply.
+        <span className="tabular text-bone/80">{burst.toFixed(2)}</span>. High burst
+        means recent buying amplifies the multiplier. Patience reduces your
+        effective price.
       </p>
     </section>
   );
