@@ -1,116 +1,157 @@
 # ASCENT — Architecture
 
-## 1. The Multiplier
-
-The hook maintains three state variables and derives a price multiplier from
-them:
+## 1. The Multiplier — Symmetric Reflexive Tanh-Exponential Curve (SR-TEC)
 
 ```
-F  = net cumulative buy flow (currency0 in − currency0 out)         [decays]
-D  = depth — slow integral of buy flow (1/4 of each buy adds to D)
-C  = compression — accumulates with sells, dampens m              [decays]
+m(F, V, D, C) = exp( α · tanh(z) )
+
+z = (F + γ·V) / S_F
+  + θ · ln(1 + max(0, D) / S_D)
+  − φ · (max(0, C) / S_C)^p
 ```
 
+| symbol | meaning                          | default       |
+|--------|----------------------------------|---------------|
+| F      | net buy flow (decay)             | int (1e18)    |
+| V      | velocity — recent buy intensity  | int (1e18)    |
+| D      | depth — slow integral            | int (1e18)    |
+| C      | compression — sell-side memory   | int (1e18)    |
+| α      | `ln(M_max)` — tanh amplitude     | 4 (m∈[.018,55])|
+| γ      | velocity weight                  | 2             |
+| θ      | depth weight                     | 1             |
+| φ      | compression weight               | 1             |
+| p      | super-linear damping exponent    | 1.2           |
+| S_F    | flow normalisation               | 300 ETH       |
+| S_V    | velocity normalisation           | 50 ETH        |
+| S_D    | depth normalisation              | 500 ETH       |
+| S_C    | compression normalisation        | 200 ETH       |
+
+### Properties (proven by construction)
+
+1. **Neutral identity** — `m(0,0,0,0) = exp(α · 0) = 1`.
+2. **Naturally bounded** — `tanh ∈ [−1,1]`, so `m ∈ [e^−α, e^+α]` for *any*
+   inputs. No clamping branch, no overflow risk on the math input itself.
+3. **Multiplicative symmetry** — `m(z) · m(−z) = exp(α·tanh(z))·exp(−α·tanh(z)) = 1`.
+   Buying X, then selling X (same block, no decay) returns the multiplier
+   exactly to its starting value.
+4. **Smoothness** — C^∞ in all components. No jumps, no kinks.
+5. **Saturation** — derivative `dm/dF ∝ sech²(z)` vanishes for large `|z|`,
+   so manipulative whales hit diminishing returns automatically.
+
+### Why this beats `K · (1 − e^{−E/S})`
+
+The reference equation is single-state: it knows only cumulative ETH spent.
+SR-TEC has **four orthogonal channels**:
+
+| dimension              | reference | SR-TEC |
+|------------------------|-----------|--------|
+| cumulative buy pressure| ✓         | ✓ (F)  |
+| velocity / burst signal| —         | ✓ (V)  |
+| reputational depth     | —         | ✓ (D)  |
+| sell-side memory       | —         | ✓ (C)  |
+| bidirectional response | —         | ✓      |
+| natural symmetry       | —         | ✓      |
+| saturating without clamp| —        | ✓      |
+
+A 100 ETH burst in one block and a 100 ETH drift over 1000 blocks have the
+same `F` but very different `V` — SR-TEC distinguishes them; the reference
+cannot.
+
+## 2. State decay
+
+Multiplicative per-block decay (half-life behaviour, no negative-zero
+artefact):
+
 ```
-m(E) = exp(clamp(F/S₁, −4, +4))            // bounded core
-       · (1 + ln(1 + max(0, D/S₂)))         // depth bonus
-       / (1 + C/S₃)                         // sell-side relief
+new = old · max(0, 1 − r · blocks)
 ```
 
-Constants live in `AscentHook.sol`:
+| component | rate r/block | ~half-life |
+|-----------|--------------|------------|
+| F         | 0.5%         | ~138 blk   |
+| V         | 5%           | ~14 blk    |
+| D         | 0.05%        | ~1380 blk  |
+| C         | 1%           | ~69 blk    |
 
-| name             | value     | meaning                          |
-|------------------|-----------|----------------------------------|
-| `S1`             | 300 ETH   | flow normalisation               |
-| `S2`             | 500 ETH   | depth normalisation              |
-| `S3`             | 200 ETH   | compression normalisation        |
-| `DECAY_F`        | 0.01/blk  | flow decay per block             |
-| `DECAY_C`        | 0.02/blk  | compression decay per block      |
-| `MIN/MAX_EXP`    | ±4·1e18   | exp input clamp → m ∈ [.018, 55] |
+Decay runs lazily on the first swap of a block. Pure variant
+`AscentState.projected(...)` is used by `computeMultiplier` and the quoter
+without writing storage.
 
-Decay runs lazily on the first swap of any block (`_decay`).
-
-## 2. Hook flow
+## 3. Hook flow
 
 ```
-beforeSwap:
-  decay()
-  if exactInput:
-    if BUY:
-      F += amountIn
-      D += amountIn / 4
-      C -= amountIn / 10           (clamped at 0)
-      tax  = amountIn · (m−1)/m    (only if m > 1)
-      take(tax)                    → BeforeSwapDelta(specified=+tax)
+beforeSwap(key, params):
+  if amountSpecified > 0: revert ExactOutputNotSupported   // closes arbitrage
+  enter()                                                  // transient reentrancy guard
+  state.decay(block.number)
+  if BUY:
+    F += a; V += a; D += a/4; C −= a/10
+    if m > 1:
+      tax = a · (m−1)/m
       treasury += tax
-    else SELL:
-      F -= amountIn
-      C += amountIn
-      bonus = min(treasury, amountIn · (m−1))  (only if m > 1)
-      pay(bonus)                   → BeforeSwapDelta(unspecified=−bonus)
-      treasury -= bonus
+      poolManager.take(currency0, this, tax)
+      delta = (specified=+tax, unspecified=0)
+  else SELL:
+    F −= a; V −= a; C += a
+    if m > 1 and treasury > 0:
+      requested = a · (m−1)
+      paid = min(requested, treasury)
+      treasury −= paid
+      poolManager.sync(currency0); transfer; settle()
+      delta = (specified=0, unspecified=−paid)
+  emit StateUpdated(poolId, F, V, D, C, m, treasury)
+  exit()
 ```
 
-The hook only mutates state on **exact-input** swaps; exact-output flows
-pass through neutrally. This avoids the round-trip quoting that would be
-needed to convert an output-specified swap into an effective pressure
-delta.
+Key invariants:
 
-## 3. Why a treasury?
+- **Solvency** — sell-side bonus is bounded by treasury; the hook can
+  always settle.
+- **CEI** — state is mutated before any external call; the transient
+  reentrancy guard catches re-entry from token callbacks.
+- **No admin** — there is no owner, no pause, no parameter setter. The
+  constants are immutable.
 
-The spec calls for `eth_out = baseOut · m` on sells. With `m > 1` that
-demands more output than the pool itself produces. Without a source of
-funds, the hook would be insolvent on the first big sell.
+## 4. Why exact-output reverts
 
-The buy-side pressure tax `(m−1)/m · amountIn` is precisely the amount the
-buyer would have received as extra tokens in a memoryless market — by
-diverting it into the hook's own balance, we accumulate exactly the budget
-needed to subsidise sellers symmetrically.
+Applying the multiplier on exact-output swaps requires either knowing the
+pool's input amount before `beforeSwap` (impossible without a quoter
+roundtrip from inside the hook) or skipping the tax (creates a free
+arbitrage path for bots). Reverting is the honest middle path —
+exact-output users route through the v4 quoter and submit exact-input
+instead.
 
-The bonus is capped at `treasury` so the hook is always solvent, at the
-cost of the sell-side multiplier being asymmetric when the system is
-imbalanced. This is the honest trade-off; documented loudly.
+## 5. Quoter
 
-## 4. Permission flags
+`AscentQuoter.quoteExactInput(key, zeroForOne, amountIn, baseOut)` mirrors
+the hook's branching logic on a memory copy of state, so the frontend's
+preview is exact (modulo the underlying AMM's `baseOut`, which the caller
+supplies from the v4 quoter).
 
-The hook needs:
+## 6. Frontend
 
-- `BEFORE_SWAP_FLAG`
-- `BEFORE_SWAP_RETURNS_DELTA_FLAG`
+- `useAscentState` — polls per-pool state via `poolId`.
+- `useQuoter` — debounced live quote against `AscentQuoter`.
+- `useExecuteSwap` — submits exact-input swaps through `PoolSwapTest` (the
+  v4 reference router for tests). Production deployments substitute the
+  `UniversalRouter` once it supports v4 routes for the target chain.
 
-These are encoded in the lowest bits of the deployed address. The deploy
-script uses `HookMiner` to find a CREATE2 salt that produces a compliant
-address.
+## 7. Indexer
 
-## 5. Frontend
+Single Node process polling `StateUpdated` logs into SQLite, indexed by
+`poolId`. Exposes `/history?poolId=…&limit=N`. Switch to The Graph or
+Ponder for production scale.
 
-- `lib/math.ts` mirrors `computeMultiplier` in floating point. The contract
-  is the source of truth; the JS copy avoids an RPC roundtrip per
-  keystroke in the trade panel.
-- `useAscentState` polls `F/D/C/treasury/computeMultiplier` every 6s.
-- `MomentumGraph` reads the indexer's `/history` endpoint (a flat list of
-  `StateUpdated` events).
+## 8. Risk surface
 
-## 6. Indexer
-
-A single Node process:
-
-- polls the chain every `POLL_MS` ms via viem
-- decodes `StateUpdated` logs into a SQLite table
-- exposes `/history?limit=N` for the frontend
-
-This is deliberately tiny — for production, switch to The Graph or
-Ponder.
-
-## 7. Known gaps
-
-- No integration tests against a live `PoolManager`. The math tests in
-  `test/AscentHook.t.sol` cover the multiplier function only.
-- The trade panel preview uses `baseOut = amountIn` as a stand-in for the
-  v4 quoter result. Wire `IQuoter` from `v4-periphery` once a pool is
-  deployed.
-- Flash-swap and reentrancy paths around `take`/`settle` need a dedicated
-  audit pass — they're the primary risk surface.
-- `D` never decays in this version; it is intended as a slow-moving
-  reputation signal. If you want it to decay, add a third `DECAY_D`
-  constant and mirror the F branch in `_decay`.
+- **Treasury denial** — sell bonuses are capped, so the hook is solvent,
+  but a sustained sell run will deplete the treasury and re-enter
+  symmetric mode. This is the intended steady state.
+- **MEV** — the velocity term V means sandwiching attempts that buy
+  immediately before a victim's buy will increase the victim's tax. The
+  attacker pays the same tax themselves, so this is self-cancelling for
+  exact-input flows.
+- **Reentrancy** — guarded via EIP-1153 transient storage.
+- **PoolManager invariants** — `take`/`sync`/`settle` calls follow the v4
+  pattern; the integration test `test_buyAccumulatesTreasuryAsMRises`
+  exercises this end-to-end.

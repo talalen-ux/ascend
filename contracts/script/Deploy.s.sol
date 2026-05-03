@@ -8,10 +8,8 @@ import {HookMiner} from "v4-periphery/utils/HookMiner.sol";
 
 import {AscentToken} from "../src/AscentToken.sol";
 import {AscentHook} from "../src/AscentHook.sol";
+import {AscentQuoter} from "../src/AscentQuoter.sol";
 
-/// @notice Deploys the token, mines a CREATE2 salt that yields a hook address
-///         with the BEFORE_SWAP + BEFORE_SWAP_RETURNS_DELTA permission flags
-///         encoded in the address, then deploys the hook.
 contract Deploy is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
@@ -26,7 +24,9 @@ contract Deploy is Script {
         console2.log("AscentToken:", address(token));
 
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            Hooks.AFTER_INITIALIZE_FLAG |
+            Hooks.BEFORE_SWAP_FLAG |
+            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
 
         bytes memory creationCode = type(AscentHook).creationCode;
@@ -38,6 +38,9 @@ contract Deploy is Script {
         AscentHook hook = new AscentHook{salt: salt}(IPoolManager(poolManager));
         require(address(hook) == predicted, "deploy: address mismatch");
         console2.log("AscentHook:", address(hook));
+
+        AscentQuoter quoter = new AscentQuoter(hook, IPoolManager(poolManager));
+        console2.log("AscentQuoter:", address(quoter));
 
         vm.stopBroadcast();
     }

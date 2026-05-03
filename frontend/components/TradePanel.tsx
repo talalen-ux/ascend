@@ -2,29 +2,41 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { useAscentState } from "@/hooks/useAscentState";
-import { previewOutput } from "@/lib/math";
+import { formatEther } from "viem";
 import clsx from "clsx";
+import { useAscentState } from "@/hooks/useAscentState";
+import { useQuoter } from "@/hooks/useQuoter";
+import { useExecuteSwap } from "@/hooks/useExecuteSwap";
+import { previewOutput } from "@/lib/math";
 
 type Side = "buy" | "sell";
 
 export function TradePanel() {
-  const { F, D, C, multiplier } = useAscentState();
+  const { F, V, D, C, multiplier, treasury } = useAscentState();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("1");
+  const isBuy = side === "buy";
 
-  const preview = useMemo(() => {
+  const { quote, error: quoteError } = useQuoter({ isBuy, amountIn: amount });
+  const { execute, pending, ready, error: execError } = useExecuteSwap();
+
+  // Local preview for instant typing feedback; on-chain quoter overrides once it lands.
+  const localPreview = useMemo(() => {
     const a = Number(amount);
     if (!Number.isFinite(a) || a <= 0) return null;
-    // Naive baseOut placeholder: the real curve quote comes from the v4 quoter.
-    // This panel demonstrates the *hook adjustment*, not the AMM math itself.
-    const baseOut = a;
     return previewOutput({
-      state: { F, D, C },
-      baseOut,
-      isBuy: side === "buy",
+      state: { F, V, D, C },
+      baseOut: a,
+      amountIn: a,
+      treasury,
+      isBuy,
     });
-  }, [amount, side, F, D, C]);
+  }, [amount, isBuy, F, V, D, C, treasury]);
+
+  const m = quote?.multiplier ?? localPreview?.m ?? multiplier;
+  const adjusted = quote ? Number(formatEther(quote.adjustedOut)) : localPreview?.adjusted ?? 0;
+  const charge = quote ? Number(formatEther(quote.hookCharge)) : localPreview?.hookCharge ?? 0;
+  const capped = quote?.treasuryCapped ?? localPreview?.treasuryCapped ?? false;
 
   return (
     <section className="rounded-2xl border border-edge bg-panel/80 p-6">
@@ -47,7 +59,7 @@ export function TradePanel() {
       </header>
 
       <label className="mt-6 block text-[11px] uppercase tracking-[0.18em] text-ash">
-        {side === "buy" ? "ETH In" : "ASCENT In"}
+        {isBuy ? "ETH In" : "ASCENT In"}
       </label>
       <input
         value={amount}
@@ -57,33 +69,33 @@ export function TradePanel() {
         placeholder="0.00"
       />
 
-      <motion.div
-        layout
-        className="mt-6 space-y-3 border-t border-edge pt-4 font-mono text-sm"
-      >
-        <Row label="Base output" value={preview ? preview.adjusted * preview.m : 0} suffix={side === "buy" ? "ASCENT" : "ETH"} dim />
+      <motion.div layout className="mt-6 space-y-3 border-t border-edge pt-4 font-mono text-sm">
+        <Row label="Adjusted output" value={adjusted} suffix={isBuy ? "ASCENT" : "ETH"} accent />
+        <Row label="Multiplier" value={m} prefix="×" />
         <Row
-          label="Adjusted output"
-          value={preview?.adjusted ?? 0}
-          suffix={side === "buy" ? "ASCENT" : "ETH"}
-          accent
+          label={isBuy ? "Pressure tax" : "Pressure bonus"}
+          value={charge}
+          suffix="ETH"
+          accent={charge > 0}
         />
-        <Row label="Multiplier" value={multiplier} prefix="×" />
-        <Row
-          label={side === "buy" ? "Pressure penalty" : "Pressure bonus"}
-          value={preview ? Math.abs(preview.penaltyBps) / 100 : 0}
-          suffix="%"
-          accent
-        />
+        {capped && (
+          <div className="rounded border border-ember/40 bg-ember/5 px-3 py-2 text-xs text-ember">
+            Treasury depleted — bonus capped at available reserves.
+          </div>
+        )}
+        {quoteError && (
+          <div className="text-xs text-ash">quoter offline; showing local preview</div>
+        )}
       </motion.div>
 
       <button
-        disabled
-        title="Wire to v4 router after deployment"
-        className="mt-6 w-full rounded-md border border-ember/60 bg-ember/10 px-4 py-3 text-sm uppercase tracking-[0.22em] text-ember disabled:opacity-50"
+        onClick={() => execute({ isBuy, amountIn: amount }).catch(() => {})}
+        disabled={!ready || pending}
+        className="mt-6 w-full rounded-md border border-ember/60 bg-ember/10 px-4 py-3 text-sm uppercase tracking-[0.22em] text-ember transition hover:bg-ember/20 disabled:opacity-40"
       >
-        Execute
+        {pending ? "Executing…" : ready ? "Execute" : "Connect wallet"}
       </button>
+      {execError && <div className="mt-2 text-xs text-ember">{execError}</div>}
     </section>
   );
 }
@@ -93,20 +105,18 @@ function Row({
   value,
   prefix,
   suffix,
-  dim,
   accent,
 }: {
   label: string;
   value: number;
   prefix?: string;
   suffix?: string;
-  dim?: boolean;
   accent?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between">
       <span className="text-xs uppercase tracking-[0.18em] text-ash">{label}</span>
-      <span className={clsx(dim && "text-ash", accent && "text-ember")}>
+      <span className={clsx(accent && "text-ember")}>
         {prefix ?? ""}
         {Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 6 }) : "—"}
         {suffix ? ` ${suffix}` : ""}

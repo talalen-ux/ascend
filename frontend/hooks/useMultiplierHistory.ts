@@ -4,10 +4,15 @@ import { useEffect, useState } from "react";
 import { config } from "@/lib/config";
 
 export interface HistoryPoint {
+  poolId: string;
   blockNumber: number;
   timestamp: number;
   multiplier: number;
+  treasury: number;
   F: number;
+  V: number;
+  D: number;
+  C: number;
 }
 
 export function useMultiplierHistory() {
@@ -18,7 +23,10 @@ export function useMultiplierHistory() {
     let cancelled = false;
     const tick = async () => {
       try {
-        const res = await fetch(`${config.indexerUrl}/history?limit=200`);
+        const url = new URL(`${config.indexerUrl}/history`);
+        url.searchParams.set("limit", "200");
+        if (config.poolId) url.searchParams.set("poolId", config.poolId);
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`indexer: ${res.status}`);
         const json = (await res.json()) as HistoryPoint[];
         if (!cancelled) setData(json);

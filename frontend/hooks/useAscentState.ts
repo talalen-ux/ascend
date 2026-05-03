@@ -5,31 +5,35 @@ import { config } from "@/lib/config";
 import { ascentHookAbi } from "@/lib/abis";
 import { formatEther } from "viem";
 
+const SCALE = (n: bigint) => Number(formatEther(n));
+
 export function useAscentState() {
-  const hook = config.hookAddress as `0x${string}`;
-  const enabled = !!hook;
+  const hook = config.hookAddress;
+  const poolId = config.poolId;
+  const enabled = hook !== "0x0000000000000000000000000000000000000000";
 
   const { data, isLoading, refetch } = useReadContracts({
     query: { enabled, refetchInterval: 6_000 },
     contracts: [
-      { address: hook, abi: ascentHookAbi, functionName: "F" },
-      { address: hook, abi: ascentHookAbi, functionName: "D" },
-      { address: hook, abi: ascentHookAbi, functionName: "C" },
-      { address: hook, abi: ascentHookAbi, functionName: "computeMultiplier" },
-      { address: hook, abi: ascentHookAbi, functionName: "treasury" },
+      { address: hook, abi: ascentHookAbi, functionName: "F", args: [poolId] },
+      { address: hook, abi: ascentHookAbi, functionName: "V", args: [poolId] },
+      { address: hook, abi: ascentHookAbi, functionName: "D", args: [poolId] },
+      { address: hook, abi: ascentHookAbi, functionName: "C", args: [poolId] },
+      { address: hook, abi: ascentHookAbi, functionName: "computeMultiplier", args: [poolId] },
+      { address: hook, abi: ascentHookAbi, functionName: "treasury", args: [poolId] },
     ],
   });
 
-  const [F, D, C, m, treasury] = data ?? [];
-  const toEth = (r: any) => Number(formatEther((r?.result as bigint) ?? 0n));
+  const r = (i: number) => SCALE(((data?.[i]?.result as bigint) ?? 0n) as bigint);
 
   return {
     isLoading,
     refetch,
-    F: toEth(F),
-    D: toEth(D),
-    C: toEth(C),
-    multiplier: toEth(m),
-    treasury: toEth(treasury),
+    F: r(0),
+    V: r(1),
+    D: r(2),
+    C: r(3),
+    multiplier: r(4),
+    treasury: r(5),
   };
 }

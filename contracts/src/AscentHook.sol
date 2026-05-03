@@ -6,77 +6,46 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {
+    BeforeSwapDelta,
+    BeforeSwapDeltaLibrary,
+    toBeforeSwapDelta
+} from "v4-core/types/BeforeSwapDelta.sol";
 import {SafeCast} from "v4-core/libraries/SafeCast.sol";
 
-import {SD59x18, sd, exp, ln, UNIT} from "@prb/math/src/SD59x18.sol";
+import {IAscentHook} from "./interfaces/IAscentHook.sol";
+import {AscentMath} from "./lib/AscentMath.sol";
+import {AscentState} from "./lib/AscentState.sol";
 
-/// @title  AscentHook
-/// @notice Stateful Uniswap v4 hook that distorts the AMM with cumulative buy pressure.
+/// @title  AscentHook — stateful Uniswap v4 hook with the SR-TEC multiplier.
 ///
-///         m(E) = exp(F/S1) * (1 + ln(1 + D/S2)) / (1 + C/S3)        (clamped)
-///
-///         BUY  (currency0 -> currency1):  user receives baseOut / m
-///         SELL (currency1 -> currency0):  user receives baseOut * m  (subsidised
-///                                          from buy-side tax accumulated in hook)
-///
-///         Solvency is preserved by capping the sell bonus at the hook's own
-///         treasury balance; if the treasury cannot cover the bonus, the bonus
-///         is reduced. The system is reflexive but bounded.
-///
-///         This contract is illustrative. v4 hook delta semantics are subtle —
-///         test thoroughly with the v4 deployer suite before any mainnet use.
-contract AscentHook is BaseHook {
+/// @notice Per-pool state. Buys pay an `(m-1)/m` pressure tax into a
+///         per-pool treasury; sells receive an `(m-1)` bonus, capped by
+///         the treasury balance to remain solvent. State decays per block
+///         multiplicatively. Exact-output swaps revert — see ARCHITECTURE.
+contract AscentHook is BaseHook, IAscentHook {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using SafeCast for uint256;
     using SafeCast for int256;
+    using AscentState for AscentState.PoolState;
 
-    // ---------------------------------------------------------------- state
+    mapping(PoolId => AscentState.PoolState) internal _state;
 
-    /// @notice Net buy pressure (currency0 in - currency0 out). Decays per block.
-    int256 public F;
-    /// @notice Depth — slow-moving demand integral.
-    int256 public D;
-    /// @notice Compression — sell-side memory; dampens the multiplier.
-    int256 public C;
+    // Transient reentrancy slot (EIP-1153).
+    bytes32 private constant REENTRANCY_SLOT =
+        keccak256("ascent.hook.reentrancy");
 
-    /// @notice Treasury balance of currency0 collected as buy-side pressure tax.
-    uint256 public treasury;
+    constructor(IPoolManager _manager) BaseHook(_manager) {}
 
-    uint256 public lastBlock;
-
-    // ------------------------------------------------------------ constants
-
-    int256 public constant S1 = 300 ether;
-    int256 public constant S2 = 500 ether;
-    int256 public constant S3 = 200 ether;
-
-    int256 public constant DECAY_F_PER_BLOCK = 0.01 ether;
-    int256 public constant DECAY_C_PER_BLOCK = 0.02 ether;
-
-    // exp() input is clamped to [-4e18, +4e18] so m ∈ [~0.018, ~54.6]
-    int256 public constant MIN_EXP_INPUT = -4e18;
-    int256 public constant MAX_EXP_INPUT = 4e18;
-
-    // ------------------------------------------------------------- events
-
-    event StateUpdated(int256 F, int256 D, int256 C, int256 multiplier);
-    event PressureTaxed(uint256 amount, uint256 treasury);
-    event SellSubsidy(uint256 requested, uint256 paid, uint256 treasury);
-
-    // ------------------------------------------------------------ ctor
-
-    constructor(IPoolManager _manager) BaseHook(_manager) {
-        lastBlock = block.number;
-    }
+    // ----------------------------------------------------------------- permissions
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
-            afterInitialize: false,
+            afterInitialize: true,
             beforeAddLiquidity: false,
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
@@ -92,111 +61,143 @@ contract AscentHook is BaseHook {
         });
     }
 
-    // ----------------------------------------------------- decay & math
+    // ----------------------------------------------------------------- view API
 
-    function _decay() internal {
-        uint256 blocks = block.number - lastBlock;
-        if (blocks == 0) return;
+    function F(PoolId poolId) external view returns (int256) { return _state[poolId].F; }
+    function V(PoolId poolId) external view returns (int256) { return _state[poolId].V; }
+    function D(PoolId poolId) external view returns (int256) { return _state[poolId].D; }
+    function C(PoolId poolId) external view returns (int256) { return _state[poolId].C; }
+    function treasury(PoolId poolId) external view returns (uint256) { return _state[poolId].treasury; }
+    function lastBlock(PoolId poolId) external view returns (uint64) { return _state[poolId].lastBlock; }
 
-        int256 dF = int256(blocks) * DECAY_F_PER_BLOCK;
-        int256 dC = int256(blocks) * DECAY_C_PER_BLOCK;
-
-        if (F > 0) {
-            F = F > dF ? F - dF : int256(0);
-        } else if (F < 0) {
-            F = F < -dF ? F + dF : int256(0);
-        }
-        if (C > dC) C -= dC;
-        else C = 0;
-
-        lastBlock = block.number;
+    /// @notice Multiplier projected to the current block (decay applied without writing).
+    function computeMultiplier(PoolId poolId) external view returns (uint256) {
+        AscentState.PoolState memory s = _state[poolId];
+        s = AscentState.projected(s, uint64(block.number));
+        return AscentMath.multiplier(s.F, s.V, s.D, s.C);
     }
 
-    /// @notice Compute the multiplier in 1e18 fixed-point. Pure of state mutation.
-    function computeMultiplier() public view returns (uint256) {
-        int256 fOverS1 = (F * 1e18) / S1;
-        if (fOverS1 > MAX_EXP_INPUT) fOverS1 = MAX_EXP_INPUT;
-        if (fOverS1 < MIN_EXP_INPUT) fOverS1 = MIN_EXP_INPUT;
-
-        SD59x18 expTerm = exp(sd(fOverS1));
-
-        int256 dOverS2 = (D * 1e18) / S2;
-        if (dOverS2 < 0) dOverS2 = 0; // ln domain
-        SD59x18 logTerm = ln(sd(int256(1e18) + dOverS2));
-
-        SD59x18 numerator = expTerm.mul(UNIT + logTerm);
-
-        int256 cOverS3 = (C * 1e18) / S3;
-        SD59x18 denom = sd(int256(1e18) + cOverS3);
-
-        SD59x18 m = numerator.div(denom);
-        int256 mInt = m.unwrap();
-        if (mInt < 0) return 0;
-        return uint256(mInt);
+    /// @notice Full state snapshot, projected. Useful for off-chain quoting.
+    function snapshot(PoolId poolId) external view returns (AscentState.PoolState memory) {
+        return AscentState.projected(_state[poolId], uint64(block.number));
     }
 
-    // ----------------------------------------------------- hook callback
+    // ----------------------------------------------------------------- callbacks
 
-    /// @inheritdoc BaseHook
+    function _afterInitialize(
+        address,
+        PoolKey calldata key,
+        uint160,
+        int24
+    ) internal override returns (bytes4) {
+        _state[key.toId()].lastBlock = uint64(block.number);
+        return BaseHook.afterInitialize.selector;
+    }
+
     function _beforeSwap(
         address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        _decay();
+        _enter();
 
-        // We require exact-input swaps for predictable pressure accounting.
-        // Exact-output flows are passed through without state mutation.
-        if (params.amountSpecified >= 0) {
-            return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
+        // Exact-output is rejected outright. Supporting it correctly requires
+        // post-swap delta application that v4 does not expose pre-swap, and
+        // skipping the tax would create a free arbitrage path.
+        if (params.amountSpecified > 0) revert ExactOutputNotSupported();
+
+        PoolId poolId = key.toId();
+        AscentState.PoolState storage s = _state[poolId];
+        s.decay(uint64(block.number));
 
         uint256 amountIn = uint256(-params.amountSpecified);
-        uint256 m = computeMultiplier();
-        BeforeSwapDelta delta = BeforeSwapDeltaLibrary.ZERO_DELTA;
+        BeforeSwapDelta delta;
 
         if (params.zeroForOne) {
-            // BUY: tax (m-1)/m of input ETH into the treasury.
-            F += int256(amountIn);
-            D += int256(amountIn / 4);
-            if (C > int256(amountIn / 10)) C -= int256(amountIn / 10);
-            else C = 0;
-
-            if (m > 1e18) {
-                uint256 tax = (amountIn * (m - 1e18)) / m;
-                if (tax > 0 && tax < amountIn) {
-                    treasury += tax;
-                    poolManager.take(key.currency0, address(this), tax);
-                    // specifiedDelta positive => hook consumed `tax` of input.
-                    delta = toBeforeSwapDelta(int128(int256(tax)), int128(0));
-                    emit PressureTaxed(tax, treasury);
-                }
-            }
+            delta = _onBuy(s, key, amountIn, poolId);
         } else {
-            // SELL: pay user a bonus of (m-1) on the output ETH from treasury.
-            F -= int256(amountIn);
-            C += int256(amountIn);
-
-            if (m > 1e18 && treasury > 0) {
-                // Estimate raw output as amountIn (worst-case 1:1 quote);
-                // a production hook would fetch the spot quote. This caps
-                // the subsidy conservatively at min(treasury, requested).
-                uint256 requested = (amountIn * (m - 1e18)) / 1e18;
-                uint256 paid = requested > treasury ? treasury : requested;
-                if (paid > 0) {
-                    treasury -= paid;
-                    poolManager.sync(key.currency0);
-                    key.currency0.transfer(address(poolManager), paid);
-                    poolManager.settle();
-                    // unspecifiedDelta negative => hook supplied extra output.
-                    delta = toBeforeSwapDelta(int128(0), -int128(int256(paid)));
-                    emit SellSubsidy(requested, paid, treasury);
-                }
-            }
+            delta = _onSell(s, key, amountIn, poolId);
         }
 
-        emit StateUpdated(F, D, C, int256(m));
+        uint256 m = AscentMath.multiplier(s.F, s.V, s.D, s.C);
+        emit StateUpdated(poolId, s.F, s.V, s.D, s.C, m, s.treasury);
+
+        _exit();
         return (BaseHook.beforeSwap.selector, delta, 0);
     }
+
+    // ----------------------------------------------------------------- branches
+
+    function _onBuy(
+        AscentState.PoolState storage s,
+        PoolKey calldata key,
+        uint256 amountIn,
+        PoolId poolId
+    ) private returns (BeforeSwapDelta) {
+        // State updates (CEI: state first, external calls last).
+        s.F += int256(amountIn);
+        s.V += int256(amountIn);
+        s.D += int256(amountIn / 4);
+        int256 cRelief = int256(amountIn / 10);
+        s.C = s.C > cRelief ? s.C - cRelief : int256(0);
+
+        uint256 m = AscentMath.multiplier(s.F, s.V, s.D, s.C);
+        if (m <= 1e18) return BeforeSwapDeltaLibrary.ZERO_DELTA;
+
+        uint256 tax = (amountIn * (m - 1e18)) / m;
+        if (tax == 0 || tax >= amountIn) return BeforeSwapDeltaLibrary.ZERO_DELTA;
+
+        s.treasury += tax;
+        poolManager.take(key.currency0, address(this), tax);
+        emit PressureTaxed(poolId, msg.sender, tax);
+
+        return toBeforeSwapDelta(int128(int256(tax)), int128(0));
+    }
+
+    function _onSell(
+        AscentState.PoolState storage s,
+        PoolKey calldata key,
+        uint256 amountIn,
+        PoolId poolId
+    ) private returns (BeforeSwapDelta) {
+        s.F -= int256(amountIn);
+        s.V -= int256(amountIn);
+        s.C += int256(amountIn);
+
+        uint256 m = AscentMath.multiplier(s.F, s.V, s.D, s.C);
+        if (m <= 1e18 || s.treasury == 0) return BeforeSwapDeltaLibrary.ZERO_DELTA;
+
+        // Bonus expressed in currency1 units (the seller's input is currency1).
+        // We pay it in currency0 (ETH) sized proportionally to amountIn.
+        // This is the symmetric counterpart to the buy-side tax.
+        uint256 requested = (amountIn * (m - 1e18)) / 1e18;
+        uint256 paid = requested > s.treasury ? s.treasury : requested;
+        if (paid == 0) return BeforeSwapDeltaLibrary.ZERO_DELTA;
+
+        s.treasury -= paid;
+        poolManager.sync(key.currency0);
+        key.currency0.transfer(address(poolManager), paid);
+        poolManager.settle();
+        emit SellSubsidy(poolId, msg.sender, requested, paid);
+
+        return toBeforeSwapDelta(int128(0), -int128(int256(paid)));
+    }
+
+    // ----------------------------------------------------------------- reentrancy
+
+    function _enter() private {
+        bytes32 slot = REENTRANCY_SLOT;
+        uint256 v;
+        assembly { v := tload(slot) }
+        if (v != 0) revert Reentrancy();
+        assembly { tstore(slot, 1) }
+    }
+
+    function _exit() private {
+        bytes32 slot = REENTRANCY_SLOT;
+        assembly { tstore(slot, 0) }
+    }
+
+    receive() external payable {}
 }

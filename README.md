@@ -1,29 +1,35 @@
 # ASCENT
 
 A Uniswap v4 hook-powered asset where price is distorted by the cumulative
-memory of buying pressure. The AMM is augmented with a stateful multiplier
-`m(E)` that grows with net buy flow and decays per block.
+memory of buying pressure. The AMM is augmented with a stateful multiplier:
 
 ```
-m(E) = exp(F/S₁) · (1 + ln(1 + D/S₂)) / (1 + C/S₃)        (clamped)
+m(F, V, D, C) = exp( α · tanh(z) )
+z = (F + γV)/S_F + θ·ln(1 + D/S_D) − φ·(C/S_C)^p
 ```
 
-- **BUY** (ETH → ASCENT): user receives `baseOut / m`
-- **SELL** (ASCENT → ETH): user receives `baseOut · m`, paid from a treasury
-  funded by the buy-side pressure tax. Sell bonus is capped at the treasury
-  balance to preserve solvency.
+Naturally bounded (no clamps), multiplicatively symmetric, momentum-aware.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the derivation and
+why this strictly dominates a single-state bonding curve like
+`K·(1 − e^{−E/S})`.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details and
-trade-offs.
+- **BUY** (currency0 → currency1): user receives `baseOut / m`. The
+  `(m−1)/m` fraction of input is taxed into a per-pool treasury.
+- **SELL** (currency1 → currency0): user receives `baseOut + bonus`,
+  where `bonus = min(amountIn·(m−1), treasury)`. The hook is always
+  solvent.
+- **Exact-output** swaps revert (closes the arbitrage path that would
+  exist if exact-output bypassed the multiplier).
 
 ## Layout
 
 ```
-contracts/   Foundry project — AscentToken, AscentHook, deploy + math tests
-frontend/    Next.js 14 app — dashboard, trade panel, momentum graph
-backend/     Lightweight TS indexer (viem + better-sqlite3 + fastify)
+contracts/   Foundry — AscentToken, AscentHook, AscentQuoter, libs, tests
+frontend/    Next.js 14 — dashboard, trade panel (live quoter), momentum graph
+backend/     Lightweight indexer (viem + sqlite + fastify)
 scripts/     deploy convenience wrapper
-docs/        architecture + spec
+docs/        architecture
+.github/     CI workflow
 ```
 
 ## Quickstart
@@ -42,7 +48,7 @@ forge test -vv
 
 ```sh
 cd frontend
-cp .env.example .env.local   # fill in addresses
+cp .env.example .env.local   # fill in addresses + poolId
 npm install
 npm run dev
 ```
@@ -51,7 +57,7 @@ npm run dev
 
 ```sh
 cd backend/indexer
-cp .env.example .env         # fill in HOOK_ADDRESS + RPC_URL
+cp .env.example .env         # HOOK_ADDRESS + RPC_URL
 npm install
 npm run dev
 ```
@@ -64,17 +70,25 @@ POOL_MANAGER=0x... TOKEN_RECIPIENT=0x... PRIVATE_KEY=0x... \
 ```
 
 The deploy script mines a CREATE2 salt so the hook address encodes the
-required permission flags (`BEFORE_SWAP` + `BEFORE_SWAP_RETURNS_DELTA`).
+required permission flags (`AFTER_INITIALIZE` + `BEFORE_SWAP` +
+`BEFORE_SWAP_RETURNS_DELTA`). It also deploys the quoter.
 
 ## Status
 
-This is a working scaffold, **not** an audited system.
+| area                          | status                                     |
+|-------------------------------|--------------------------------------------|
+| math core (SR-TEC)            | implemented + property-tested              |
+| per-pool state + decay        | implemented + tested                       |
+| reentrancy guard              | EIP-1153 transient storage                 |
+| exact-output handling         | reverts (`ExactOutputNotSupported`)        |
+| v4 integration tests          | included (`AscentHookIntegrationTest`)     |
+| quoter                        | `AscentQuoter` — exact off-chain mirror    |
+| frontend wiring               | quoter + `PoolSwapTest` execute path       |
+| indexer                       | per-pool history; new event payload        |
+| CI                            | foundry build + test on push               |
 
-- The hook delta semantics are implemented to the best of the v4 spec but
-  have **not** been integrated against a live `PoolManager`. Test against
-  the v4 deployer fixtures before touching real liquidity.
-- The trade panel does not yet route through the v4 router — the "Execute"
-  button is intentionally disabled. Wiring it requires the chosen v4
-  router/quoter for your target chain.
-- Treasury solvency for sell bonuses is best-effort: the bonus is bounded
-  by the hook's own currency0 balance.
+Not audited. Treasury solvency is mathematically guaranteed; the hook
+itself has not been through a third-party review. The `PoolSwapTest`
+router is the v4 reference router for tests; substitute the
+`UniversalRouter` for production swap flows on chains where it supports
+v4.
