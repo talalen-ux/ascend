@@ -24,8 +24,8 @@ why this strictly dominates a single-state bonding curve like
 ## Layout
 
 ```
+./           Next.js 14 dapp (Vercel root) — app, components, hooks, lib
 contracts/   Foundry — AscentToken, AscentHook, AscentQuoter, libs, tests
-frontend/    Next.js 14 — dashboard, trade panel (live quoter), momentum graph
 backend/     Lightweight indexer (viem + sqlite + fastify)
 scripts/     deploy convenience wrapper
 docs/        architecture
@@ -33,6 +33,14 @@ docs/        architecture
 ```
 
 ## Quickstart
+
+### Frontend (this directory)
+
+```sh
+cp .env.example .env.local   # fill in addresses + poolId (optional — demo mode otherwise)
+npm install
+npm run dev
+```
 
 ### Contracts
 
@@ -42,15 +50,6 @@ forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts \
   PaulRBerg/prb-math Uniswap/v4-core Uniswap/v4-periphery
 forge build
 forge test -vv
-```
-
-### Frontend
-
-```sh
-cd frontend
-cp .env.example .env.local   # fill in addresses + poolId
-npm install
-npm run dev
 ```
 
 ### Indexer

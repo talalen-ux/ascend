@@ -17,5 +17,4 @@ backend/indexer/*.db
 backend/indexer/*.db-shm
 backend/indexer/*.db-wal
 
-frontend/tsconfig.tsbuildinfo
-frontend/.next/
+tsconfig.tsbuildinfo
