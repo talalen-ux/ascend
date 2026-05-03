@@ -1,7 +1,27 @@
 # ASCENT
 
-A Uniswap v4 hook-powered asset where price is distorted by the cumulative
-memory of buying pressure. The AMM is augmented with a stateful multiplier:
+**A store of value with memory. The market that rewards patience.**
+
+Ascent is a single token in a single Uniswap v4 pool with one rule baked
+into the AMM itself:
+
+- **Buyers pay a premium during hype.** The faster the rush, the steeper
+  the premium. Premiums fund a per-pool holder reserve.
+- **Sellers receive a bonus when hype cools.** Patience is paid out in
+  cash, drawn from the reserve that earlier buyers filled.
+- **The market reverts on its own.** Memory of recent activity decays
+  every block — no keeper, no team intervention, no governance.
+
+There is no inflation, no team unlock, no staking flow. Time becomes a
+price input. Patience compounds into a real bonus on exit.
+
+See the on-site [Docs](./app/page.tsx) section for the plain-language
+explanation, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
+math derivation.
+
+## How the swap path works
+
+The AMM is augmented with a stateful demand premium:
 
 ```
 m(F, V, D, C) = exp( α · tanh(z) )
@@ -9,12 +29,10 @@ z = (F + γV)/S_F + θ·ln(1 + D/S_D) − φ·(C/S_C)^p
 ```
 
 Naturally bounded (no clamps), multiplicatively symmetric, momentum-aware.
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the derivation and
-why this strictly dominates a single-state bonding curve like
-`K·(1 − e^{−E/S})`.
 
 - **BUY** (currency0 → currency1): user receives `baseOut / m`. The
-  `(m−1)/m` fraction of input is taxed into a per-pool treasury.
+  `(m−1)/m` fraction of input is taxed into a per-pool holder reserve
+  (the "treasury").
 - **SELL** (currency1 → currency0): user receives `baseOut + bonus`,
   where `bonus = min(amountIn·(m−1), treasury)`. The hook is always
   solvent.

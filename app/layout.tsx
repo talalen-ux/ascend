@@ -15,9 +15,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ASCENT — Trading Against Memory",
+  title: "ASCENT — A store of value with memory",
   description:
-    "A Uniswap v4 hook-powered asset where price is distorted by the cumulative memory of buying pressure.",
+    "Ascent is a store of value that rewards patience. Buyers pay a premium during hype; sellers receive a bonus when hype cools. One token, one Uniswap v4 pool, math-enforced.",
 };
 
 export const viewport: Viewport = {

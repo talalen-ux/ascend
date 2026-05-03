@@ -85,9 +85,9 @@ export function TradePanel() {
           accent
           big
         />
-        <Row label="Multiplier" value={m} prefix="×" muted />
+        <Row label="Demand premium" value={m} prefix="×" muted />
         <Row
-          label={isBuy ? "Pressure tax" : "Pressure bonus"}
+          label={isBuy ? "Premium paid" : "Patience bonus"}
           value={charge}
           suffix="Ξ"
           muted

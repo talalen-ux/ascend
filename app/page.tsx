@@ -3,6 +3,7 @@ import { TradePanel } from "@/components/TradePanel";
 import { MomentumGraph } from "@/components/MomentumGraph";
 import { InsightBox } from "@/components/InsightBox";
 import { Header } from "@/components/Header";
+import { Docs } from "@/components/Docs";
 
 export default function Page() {
   return (
@@ -20,8 +21,10 @@ export default function Page() {
         </div>
       </div>
 
+      <Docs />
+
       <footer className="mt-20 flex items-center justify-between text-[11px] text-ash">
-        <span>Cumulative buy pressure encoded into the AMM. Decays per block.</span>
+        <span>A store of value with memory. Patience is the edge.</span>
         <span className="font-mono">v0.1</span>
       </footer>
     </main>

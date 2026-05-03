@@ -14,7 +14,7 @@ export function Header() {
         >
           <Mark />
           <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-            Ascent · Uniswap v4 Hook
+            Ascent · A store of value with memory
           </span>
         </motion.div>
         <motion.h1
@@ -23,8 +23,8 @@ export function Header() {
           transition={{ duration: 0.6, delay: 0.05 }}
           className="mt-3 max-w-xl text-3xl font-medium leading-[1.1] tracking-tight text-bone md:text-[40px]"
         >
-          Trading against
-          <span className="text-accent"> memory</span>.
+          The market that
+          <span className="text-accent"> rewards patience</span>.
         </motion.h1>
         <motion.p
           initial={{ opacity: 0 }}
@@ -32,8 +32,9 @@ export function Header() {
           transition={{ duration: 0.6, delay: 0.15 }}
           className="mt-3 max-w-md text-[13px] leading-relaxed text-ash"
         >
-          A reflexive AMM where price is shaped by the cumulative velocity of
-          buying pressure. Decay returns the system to equilibrium.
+          Ascent is a store of value with one rule: the more people chase it,
+          the more it costs to chase. The longer you hold, the more the
+          market pays you when you sell.
         </motion.p>
       </div>
 
@@ -44,13 +45,16 @@ export function Header() {
         className="hidden text-right md:block"
       >
         <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          SR-TEC
+          The deal
         </div>
-        <div className="mt-2 font-mono text-[11px] text-bone/70">
-          m = exp(α · tanh(z))
+        <div className="mt-2 text-[12px] text-bone/80">
+          Buyers pay a premium during hype.
         </div>
-        <div className="mt-1 font-mono text-[10px] text-ash">
-          z = (F + γV)/S<sub>F</sub> + θ ln(1 + D/S<sub>D</sub>) − φ (C/S<sub>C</sub>)<sup>p</sup>
+        <div className="mt-1 text-[12px] text-bone/80">
+          Sellers earn a bonus when hype cools.
+        </div>
+        <div className="mt-1 text-[11px] text-ash">
+          Same pool. Same token. Different timing.
         </div>
       </motion.div>
     </header>

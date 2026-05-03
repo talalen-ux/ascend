@@ -14,7 +14,7 @@ export function Dashboard() {
     <section className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          System State
+          Market mood
         </h2>
         <div className="flex items-center gap-2 text-[11px] text-ash">
           <span
@@ -33,17 +33,17 @@ export function Dashboard() {
         className="grid grid-cols-2 gap-3 md:grid-cols-6"
       >
         <Stat
-          label="Multiplier m"
+          label="Demand premium"
           value={`× ${fmt(multiplier, 3)}`}
-          hint="exp(α·tanh(z))"
+          hint="what buyers pay over fair price"
           className="col-span-2 md:col-span-1"
           emphasis
         />
-        <Stat label="Flow F" value={fmt(F)} hint="net buy ETH" />
-        <Stat label="Velocity V" value={fmt(V)} hint="recent burst" />
-        <Stat label="Depth D" value={fmt(D)} hint="slow integral" />
-        <Stat label="Compress C" value={fmt(C)} hint="sell memory" />
-        <Stat label="Treasury" value={`${fmt(treasury)} Ξ`} hint="bonus reserve" />
+        <Stat label="Net buying" value={fmt(F)} hint="cumulative inflow" />
+        <Stat label="Recent rush" value={fmt(V)} hint="last few blocks" />
+        <Stat label="Holder base" value={fmt(D)} hint="long-term conviction" />
+        <Stat label="Sell pressure" value={fmt(C)} hint="cools the premium" />
+        <Stat label="Holder reserve" value={`${fmt(treasury)} Ξ`} hint="paid out as sell bonuses" />
       </motion.div>
     </section>
   );
