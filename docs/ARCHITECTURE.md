@@ -1,157 +1,101 @@
-# ASCENT — Architecture
+# sato — architecture
 
-## 1. The Multiplier — Symmetric Reflexive Tanh-Exponential Curve (SR-TEC)
+## the curve
 
-```
-m(F, V, D, C) = exp( α · tanh(z) )
-
-z = (F + γ·V) / S_F
-  + θ · ln(1 + max(0, D) / S_D)
-  − φ · (max(0, C) / S_C)^p
-```
-
-| symbol | meaning                          | default       |
-|--------|----------------------------------|---------------|
-| F      | net buy flow (decay)             | int (1e18)    |
-| V      | velocity — recent buy intensity  | int (1e18)    |
-| D      | depth — slow integral            | int (1e18)    |
-| C      | compression — sell-side memory   | int (1e18)    |
-| α      | `ln(M_max)` — tanh amplitude     | 4 (m∈[.018,55])|
-| γ      | velocity weight                  | 2             |
-| θ      | depth weight                     | 1             |
-| φ      | compression weight               | 1             |
-| p      | super-linear damping exponent    | 1.2           |
-| S_F    | flow normalisation               | 300 ETH       |
-| S_V    | velocity normalisation           | 50 ETH        |
-| S_D    | depth normalisation              | 500 ETH       |
-| S_C    | compression normalisation        | 200 ETH       |
-
-### Properties (proven by construction)
-
-1. **Neutral identity** — `m(0,0,0,0) = exp(α · 0) = 1`.
-2. **Naturally bounded** — `tanh ∈ [−1,1]`, so `m ∈ [e^−α, e^+α]` for *any*
-   inputs. No clamping branch, no overflow risk on the math input itself.
-3. **Multiplicative symmetry** — `m(z) · m(−z) = exp(α·tanh(z))·exp(−α·tanh(z)) = 1`.
-   Buying X, then selling X (same block, no decay) returns the multiplier
-   exactly to its starting value.
-4. **Smoothness** — C^∞ in all components. No jumps, no kinks.
-5. **Saturation** — derivative `dm/dF ∝ sech²(z)` vanishes for large `|z|`,
-   so manipulative whales hit diminishing returns automatically.
-
-### Why this beats `K · (1 − e^{−E/S})`
-
-The reference equation is single-state: it knows only cumulative ETH spent.
-SR-TEC has **four orthogonal channels**:
-
-| dimension              | reference | SR-TEC |
-|------------------------|-----------|--------|
-| cumulative buy pressure| ✓         | ✓ (F)  |
-| velocity / burst signal| —         | ✓ (V)  |
-| reputational depth     | —         | ✓ (D)  |
-| sell-side memory       | —         | ✓ (C)  |
-| bidirectional response | —         | ✓      |
-| natural symmetry       | —         | ✓      |
-| saturating without clamp| —        | ✓      |
-
-A 100 ETH burst in one block and a 100 ETH drift over 1000 blocks have the
-same `F` but very different `V` — SR-TEC distinguishes them; the reference
-cannot.
-
-## 2. State decay
-
-Multiplicative per-block decay (half-life behaviour, no negative-zero
-artefact):
+let `E` be the cumulative ETH ever paid in (post-fee). the issuer
+defines two functions:
 
 ```
-new = old · max(0, 1 − r · blocks)
+p(E) = (S/K) · e^(  E/S )       marginal price, ETH per sato
+N(E) = K   · ( 1 - e^(-E/S) )   total supply at state E
 ```
 
-| component | rate r/block | ~half-life |
-|-----------|--------------|------------|
-| F         | 0.5%         | ~138 blk   |
-| V         | 5%           | ~14 blk    |
-| D         | 0.05%        | ~1380 blk  |
-| C         | 1%           | ~69 blk    |
+with `S = 500 ETH` and `K = 21,000,000`.
 
-Decay runs lazily on the first swap of a block. Pure variant
-`AscentState.projected(...)` is used by `computeMultiplier` and the quoter
-without writing storage.
+these are inverses of each other in the obvious way:
+`dN/dE = (K/S) · e^(-E/S) = 1/p(E)`. that identity is what makes the
+curve invertible — buying integrates the spend across the price wedge,
+selling unwinds the same wedge.
 
-## 3. Hook flow
+## buy
+
+input: `ethIn`. compute fee, then move along the curve:
 
 ```
-beforeSwap(key, params):
-  if amountSpecified > 0: revert ExactOutputNotSupported   // closes arbitrage
-  enter()                                                  // transient reentrancy guard
-  state.decay(block.number)
-  if BUY:
-    F += a; V += a; D += a/4; C −= a/10
-    if m > 1:
-      tax = a · (m−1)/m
-      treasury += tax
-      poolManager.take(currency0, this, tax)
-      delta = (specified=+tax, unspecified=0)
-  else SELL:
-    F −= a; V −= a; C += a
-    if m > 1 and treasury > 0:
-      requested = a · (m−1)
-      paid = min(requested, treasury)
-      treasury −= paid
-      poolManager.sync(currency0); transfer; settle()
-      delta = (specified=0, unspecified=−paid)
-  emit StateUpdated(poolId, F, V, D, C, m, treasury)
-  exit()
+fee     = ethIn · 0.003                 (0.3% bps)
+net     = ethIn - fee
+E_old   = cumulativeEth                  (state before)
+E_new   = E_old + net                    (state after)
+satoOut = N(E_new) - N(E_old)
+        = K · (e^(-E_old/S) - e^(-E_new/S))
 ```
 
-Key invariants:
+then mint `satoOut` to the buyer, add `fee` to the issuer balance, and
+write `cumulativeEth = E_new`.
 
-- **Solvency** — sell-side bonus is bounded by treasury; the hook can
-  always settle.
-- **CEI** — state is mutated before any external call; the transient
-  reentrancy guard catches re-entry from token callbacks.
-- **No admin** — there is no owner, no pause, no parameter setter. The
-  constants are immutable.
+## sell
 
-## 4. Why exact-output reverts
+input: `satoIn`. unwind the same wedge:
 
-Applying the multiplier on exact-output swaps requires either knowing the
-pool's input amount before `beforeSwap` (impossible without a quoter
-roundtrip from inside the hook) or skipping the tax (creates a free
-arbitrage path for bots). Reverting is the honest middle path —
-exact-output users route through the v4 quoter and submit exact-input
-instead.
+```
+N_old   = N(E)                          ≡ totalSupply on the curve
+N_new   = N_old - satoIn
+E_new   = -S · ln(1 - N_new/K)
+gross   = E - E_new
+fee     = gross · 0.003
+ethOut  = gross - fee
+```
 
-## 5. Quoter
+burn `satoIn`, transfer `ethOut`, write `cumulativeEth = E_new`.
 
-`AscentQuoter.quoteExactInput(key, zeroForOne, amountIn, baseOut)` mirrors
-the hook's branching logic on a memory copy of state, so the frontend's
-preview is exact (modulo the underlying AMM's `baseOut`, which the caller
-supplies from the v4 quoter).
+## the solvency invariant
 
-## 6. Frontend
+at every block, the issuer balance equals
+`cumulativeEth + accumulatedFees`. buys add `net` to cumulativeEth and
+`fee` to fees; sells take `gross = fee + ethOut` out of the contract
+balance and reduce cumulativeEth by `gross`, leaving fees untouched.
 
-- `useAscentState` — polls per-pool state via `poolId`.
-- `useQuoter` — debounced live quote against `AscentQuoter`.
-- `useExecuteSwap` — submits exact-input swaps through `PoolSwapTest` (the
-  v4 reference router for tests). Production deployments substitute the
-  `UniversalRouter` once it supports v4 routes for the target chain.
+since `gross ≤ E` (you cannot move past zero), the balance never goes
+negative. the asymptote at `K` makes selling all of the supply
+mathematically impossible — the inverse function diverges as `N → K`.
 
-## 7. Indexer
+the test suite asserts this invariant after every buy and sell in a
+randomized sequence.
 
-Single Node process polling `StateUpdated` logs into SQLite, indexed by
-`poolId`. Exposes `/history?poolId=…&limit=N`. Switch to The Graph or
-Ponder for production scale.
+## anti-MEV
 
-## 8. Risk surface
+two protections, both small:
 
-- **Treasury denial** — sell bonuses are capped, so the hook is solvent,
-  but a sustained sell run will deplete the treasury and re-enter
-  symmetric mode. This is the intended steady state.
-- **MEV** — the velocity term V means sandwiching attempts that buy
-  immediately before a victim's buy will increase the victim's tax. The
-  attacker pays the same tax themselves, so this is self-cancelling for
-  exact-input flows.
-- **Reentrancy** — guarded via EIP-1153 transient storage.
-- **PoolManager invariants** — `take`/`sync`/`settle` calls follow the v4
-  pattern; the integration test `test_buyAccumulatesTreasuryAsMRises`
-  exercises this end-to-end.
+- **per-buy cap of 5 ETH.** prevents single-block whale buys from racing
+  the price function. with `S = 500 ETH`, a 5 ETH buy moves cumulative
+  ETH by 1% of S — meaningful but bounded.
+- **same-block sell-after-buy revert.** prevents an attacker from
+  buying at price `p`, observing a follow-up buy in the same block, and
+  unwinding before any other actor can react.
+
+these are sufficient because the curve has no AMM-style slippage to
+attack; price is a closed-form function of `E`, not a function of
+liquidity ratios.
+
+## why no Uniswap pool, no LP token, no admin
+
+every alternative architecture either:
+
+- splits price discovery across multiple venues (a parallel Uniswap
+  pool would arbitrage against the issuer constantly), or
+- hands custody of part of the system to an account or a position that
+  can be removed.
+
+the issuer is the only venue. the issuer has no owner. there is nothing
+to remove and nothing to administer.
+
+## what the contract cannot do
+
+- mint sato outside of `buy()`
+- burn sato outside of `sell()`
+- transfer ETH out except through `sell()`
+- pause, blacklist, upgrade, rescue, refund
+- be reconfigured by anyone
+
+if every wallet associated with the deploy disappears tonight, the
+contract still runs tomorrow at exactly the same prices.

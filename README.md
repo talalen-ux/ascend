@@ -1,111 +1,118 @@
-# ASCENT
+# sato
 
-**A store of value with memory. The market that rewards patience.**
+> the contract that priced the first buy will price every buy after it. forever.
 
-Ascent is a single token in a single Uniswap v4 pool with one rule baked
-into the AMM itself:
+sato is a fair-launch ERC-20 issued from a single bonding-curve contract on
+Ethereum. there is no team wallet, no LP position, no migration path, no
+admin. price is a deterministic function of cumulative ETH ever paid in;
+supply asymptotes at 21,000,000 and never quite reaches it.
 
-- **Buyers pay a premium during hype.** The faster the rush, the steeper
-  the premium. Premiums fund a per-pool holder reserve.
-- **Sellers receive a bonus when hype cools.** Patience is paid out in
-  cash, drawn from the reserve that earlier buyers filled.
-- **The market reverts on its own.** Memory of recent activity decays
-  every block — no keeper, no team intervention, no governance.
-
-There is no inflation, no team unlock, no staking flow. Time becomes a
-price input. Patience compounds into a real bonus on exit.
-
-See the on-site [Docs](./app/page.tsx) section for the plain-language
-explanation, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
-math derivation.
-
-## How the swap path works
-
-The AMM is augmented with a stateful demand premium:
+## the function
 
 ```
-m(F, V, D, C) = exp( α · tanh(z) )
-z = (F + γV)/S_F + θ·ln(1 + D/S_D) − φ·(C/S_C)^p
+p(E) = (S/K) · e^( E/S )                    marginal price (ETH per sato)
+N(E) = K · ( 1 - e^( -E/S ) )               total supply at cumulative ETH E
+
+S = 500 ETH
+K = 21,000,000
+fee = 0.3% on both directions, accumulated in the issuer permanently
 ```
 
-Naturally bounded (no clamps), multiplicatively symmetric, momentum-aware.
+every wei of ETH ever paid in lives in the issuer contract. sells reverse
+the function: burning sato moves cumulative-ETH backward by exactly the
+wedge it represents under the curve, and the user is paid that ETH from
+the contract balance. the contract is its own counterparty.
 
-- **BUY** (currency0 → currency1): user receives `baseOut / m`. The
-  `(m−1)/m` fraction of input is taxed into a per-pool holder reserve
-  (the "treasury").
-- **SELL** (currency1 → currency0): user receives `baseOut + bonus`,
-  where `bonus = min(amountIn·(m−1), treasury)`. The hook is always
-  solvent.
-- **Exact-output** swaps revert (closes the arbitrage path that would
-  exist if exact-output bypassed the multiplier).
+two protections against same-block manipulation:
 
-## Layout
+- each buy is capped at **5 ETH**
+- selling in the same block as your last buy reverts
+
+these are the only frictions. there is no other state.
+
+## architecture
 
 ```
-./           Next.js 14 dapp (Vercel root) — app, components, hooks, lib
-contracts/   Foundry — AscentToken, AscentHook, AscentQuoter, libs, tests
-backend/     Lightweight indexer (viem + sqlite + fastify)
-scripts/     deploy convenience wrapper
-docs/        architecture
-.github/     CI workflow
+contracts/
+  src/
+    Sato.sol         ERC-20. lowercase name & symbol. sole minter is the issuer.
+    SatoHook.sol     the issuer. buy/sell + curve state. holds all ETH forever.
+    SatoMath.sol     exp/ln helpers (PRBMath SD59x18) for the curve.
+  script/Deploy.s.sol   one-shot deploy. nothing to configure.
+  test/SatoHook.t.sol   round-trip + invariants + cap/lockout tests.
+
+app/, components/, hooks/, lib/    Next.js dapp.
+  lib/curve.ts        off-chain mirror of SatoMath for instant quoting.
 ```
 
-## Quickstart
+the issuer constructor deploys the sato token with the issuer address
+locked in as the sole minter. there are no setters, no admin role, no
+upgrade path. once the deploy transaction lands, the contract is the
+contract.
 
-### Frontend (this directory)
+## quickstart
 
-```sh
-cp .env.example .env.local   # fill in addresses + poolId (optional — demo mode otherwise)
-npm install
-npm run dev
-```
-
-### Contracts
+### contracts
 
 ```sh
 cd contracts
-forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts \
-  PaulRBerg/prb-math Uniswap/v4-core Uniswap/v4-periphery
+forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts PaulRBerg/prb-math
 forge build
 forge test -vv
 ```
 
-### Indexer
+### deploy
 
 ```sh
-cd backend/indexer
-cp .env.example .env         # HOOK_ADDRESS + RPC_URL
+PRIVATE_KEY=0x... forge script script/Deploy.s.sol:Deploy \
+  --rpc-url <rpc> --broadcast
+```
+
+prints the issuer address and the sato token address. add the issuer
+address to your dapp env as `NEXT_PUBLIC_SATO_HOOK`.
+
+### dapp
+
+```sh
+echo 'NEXT_PUBLIC_SATO_HOOK=0x...' > .env.local   # optional — demo mode otherwise
+echo 'NEXT_PUBLIC_CHAIN_ID=1'      >> .env.local
 npm install
 npm run dev
 ```
 
-### Deploy
+## design notes
 
-```sh
-POOL_MANAGER=0x... TOKEN_RECIPIENT=0x... PRIVATE_KEY=0x... \
-  npx tsx scripts/deploy.ts --rpc <rpc-url>
-```
+**why the bootstrap-randomness window was cut.** the manifesto draft
+referenced a per-buy random multiplier between 0.9 and 1.1 over the first
+100 blocks. any range that includes mult > 1 (favoring the buyer) puts the
+issuer in a position where total ETH credited to the curve exceeds total
+ETH actually held, breaking solvency for future sells. dropping the
+window makes the contract deterministic from genesis instead of from
+block 100, which is a cleaner expression of the manifesto's thesis.
 
-The deploy script mines a CREATE2 salt so the hook address encodes the
-required permission flags (`AFTER_INITIALIZE` + `BEFORE_SWAP` +
-`BEFORE_SWAP_RETURNS_DELTA`). It also deploys the quoter.
+**why the fees can never be withdrawn.** there is no withdraw function.
+the fees sit in the issuer balance forever. they back nothing, fund
+nothing, and pay nothing. they exist to widen the round-trip spread by
+0.6%, slowing the wash-trade attack surface without creating a treasury
+that someone has to govern.
 
-## Status
+**why no Uniswap pool.** the manifesto's thesis is "the contract that
+priced the first buy will price every buy after it." adding a parallel
+AMM pool — even with the issuer wired in as a hook — splits price
+discovery between two surfaces. the only way to honor the thesis
+literally is to make the issuer the only buy/sell venue.
 
-| area                          | status                                     |
-|-------------------------------|--------------------------------------------|
-| math core (SR-TEC)            | implemented + property-tested              |
-| per-pool state + decay        | implemented + tested                       |
-| reentrancy guard              | EIP-1153 transient storage                 |
-| exact-output handling         | reverts (`ExactOutputNotSupported`)        |
-| v4 integration tests          | included (`AscentHookIntegrationTest`)     |
-| quoter                        | `AscentQuoter` — exact off-chain mirror    |
-| frontend wiring               | quoter + `PoolSwapTest` execute path       |
-| indexer                       | per-pool history; new event payload        |
-| CI                            | foundry build + test on push               |
+## status
 
-Not audited. Treasury solvency is mathematically guaranteed; the hook
-itself has not been through a third-party review. The `PoolSwapTest`
-router is the v4 reference router for tests; substitute the
-`UniversalRouter` for production swap flows on chains where it supports
-v4.
+| area              | status                                  |
+|-------------------|-----------------------------------------|
+| curve math        | implemented + property-tested           |
+| solvency invariant| asserted in fuzz-style sequence test    |
+| 5 ETH per-buy cap | enforced                                |
+| same-block lockout| enforced                                |
+| deploy script     | one-shot, no configuration              |
+| dapp              | live state, curve preview, buy/sell UI  |
+
+not audited. the contract is small and the invariants are simple, but
+that is not a substitute for a third-party review on anything you put
+real money into.

@@ -15,9 +15,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ASCENT — A store of value with memory",
+  title: "sato — code that runs without an operator",
   description:
-    "Ascent is a store of value that rewards patience. Buyers pay a premium during hype; sellers receive a bonus when hype cools. One token, one Uniswap v4 pool, math-enforced.",
+    "sato is a fair-launch erc-20 issued from a single bonding-curve contract on ethereum. price is deterministic, supply asymptotes at 21,000,000, no admin, no upgrade, no migration.",
 };
 
 export const viewport: Viewport = {
