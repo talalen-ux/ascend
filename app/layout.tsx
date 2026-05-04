@@ -15,9 +15,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "sato — code that runs without an operator",
+  title: "rise — the floor only goes up",
   description:
-    "sato is a fair-launch erc-20 issued from a single bonding-curve contract on ethereum. price is deterministic, supply asymptotes at 21,000,000, no admin, no upgrade, no migration.",
+    "rise is a fair-launch erc-20 backed by ETH. the price floor is reserve / supply, and by construction it can only go up. 1% buy fee, 3% sell fee, no admin, no withdraw.",
 };
 
 export const viewport: Viewport = {

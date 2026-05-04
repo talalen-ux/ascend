@@ -3,16 +3,14 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import clsx from "clsx";
-import { useSatoState } from "@/hooks/useSatoState";
+import { useRiseState } from "@/hooks/useRiseState";
 import { useTrade, type Side } from "@/hooks/useTrade";
-import { quoteBuy, quoteSell, MAX_BUY_WEI } from "@/lib/curve";
-
-const MAX_BUY_ETH = Number(MAX_BUY_WEI) / 1e18;
+import { quoteBuy, quoteSell } from "@/lib/floor";
 
 export function Trade() {
-  const { cumulativeEth, isDemo } = useSatoState();
+  const state = useRiseState();
   const [side, setSide] = useState<Side>("buy");
-  const [amount, setAmount] = useState("0.5");
+  const [amount, setAmount] = useState("0.1");
   const { execute, pending, error, ready, isSuccess } = useTrade();
 
   const isBuy = side === "buy";
@@ -20,10 +18,13 @@ export function Trade() {
   const quote = useMemo(() => {
     const a = Number(amount);
     if (!Number.isFinite(a) || a <= 0) return null;
-    return isBuy ? quoteBuy(cumulativeEth, a) : quoteSell(cumulativeEth, a);
-  }, [amount, isBuy, cumulativeEth]);
-
-  const overCap = isBuy && Number(amount) > MAX_BUY_ETH;
+    if (isBuy) {
+      const q = quoteBuy(state, a);
+      return q ? { received: q.riseOut, fee: q.fee, floorAfter: q.floorAfter } : null;
+    }
+    const q = quoteSell(state, a);
+    return q ? { received: q.ethOut, fee: q.fee, floorAfter: q.floorAfter } : null;
+  }, [amount, isBuy, state]);
 
   return (
     <section className="panel p-7">
@@ -46,11 +47,8 @@ export function Trade() {
       </header>
 
       <div className="mt-7">
-        <label className="flex items-baseline justify-between text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          <span>{isBuy ? "ETH In" : "sato In"}</span>
-          {isBuy && (
-            <span className="text-[10px] text-ash">cap: {MAX_BUY_ETH} Ξ / buy</span>
-          )}
+        <label className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+          {isBuy ? "ETH In" : "rise In"}
         </label>
         <div className="mt-2 flex items-baseline gap-3">
           <input
@@ -60,7 +58,7 @@ export function Trade() {
             className="tabular w-full bg-transparent font-mono text-[40px] leading-none text-bone outline-none placeholder:text-ash/40"
             placeholder="0.00"
           />
-          <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "sato"}</span>
+          <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "rise"}</span>
         </div>
       </div>
 
@@ -69,36 +67,46 @@ export function Trade() {
       <div className="space-y-3 font-mono text-[13px]">
         <Row
           label="You receive"
-          value={quote ? (isBuy ? (quote as ReturnType<typeof quoteBuy>).satoOut : (quote as ReturnType<typeof quoteSell>).ethOut) : 0}
-          suffix={isBuy ? "sato" : "Ξ"}
+          value={quote?.received ?? 0}
+          suffix={isBuy ? "rise" : "Ξ"}
           accent
           big
         />
-        <Row label="Effective price" value={quote?.effectivePriceEth ?? 0} suffix="Ξ / sato" muted small />
-        <Row label="Fee (0.3%)" value={quote?.fee ?? 0} suffix={isBuy ? "Ξ" : "Ξ"} muted small />
+        <Row
+          label={isBuy ? "Buy fee (1%)" : "Sell fee (3%)"}
+          value={quote?.fee ?? 0}
+          suffix="Ξ"
+          muted
+          small
+        />
+        <Row
+          label="Floor after"
+          value={quote?.floorAfter ?? state.floorEth}
+          suffix="Ξ / rise"
+          muted
+          small
+        />
       </div>
 
       <button
         onClick={() => execute(side, amount).catch(() => {})}
-        disabled={!ready || pending || isDemo || overCap || !quote}
+        disabled={!ready || pending || state.isDemo || !quote}
         className={clsx(
           "mt-7 w-full rounded-lg px-4 py-3.5 text-[12px] font-medium uppercase tracking-widest transition",
-          isDemo
+          state.isDemo
             ? "border border-edge bg-glass text-ash"
             : "border border-accent/40 bg-accent/10 text-accent hover:bg-accent/15 hover:shadow-glow",
-          (pending || (!ready && !isDemo) || overCap) && "opacity-50",
+          (pending || (!ready && !state.isDemo)) && "opacity-50",
         )}
       >
-        {isDemo
-          ? "Demo · set NEXT_PUBLIC_SATO_HOOK to enable"
-          : overCap
-          ? `Over 5 Ξ cap`
+        {state.isDemo
+          ? "Demo · set NEXT_PUBLIC_RISE_ENGINE to enable"
           : pending
           ? "Pending…"
           : ready
           ? side === "buy"
-            ? "Buy"
-            : "Sell"
+            ? "Buy rise"
+            : "Sell rise"
           : "Connect wallet"}
       </button>
 
@@ -111,12 +119,12 @@ export function Trade() {
           confirmed.
         </motion.div>
       )}
-      {error && <div className="mt-2 text-[11px] text-accent2">{error}</div>}
+      {error && <div className="mt-2 text-[11px] text-accent2 break-words">{error}</div>}
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? "5 ETH max per buy. The contract takes a 0.3% fee, then mints sato priced by the function."
-          : "Selling in the same block as your last buy reverts. The contract pays you ETH from its balance, minus 0.3%."}
+          ? "1% of your ETH stays in the contract as more backing for everyone. you mint rise at the current floor."
+          : "3% of your sale stays in the contract as more backing for everyone. the rest is paid out at the current floor."}
       </p>
     </section>
   );

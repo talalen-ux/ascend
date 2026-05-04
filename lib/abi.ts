@@ -1,39 +1,38 @@
-export const SATO_HOOK_ABI = [
-  { type: "function", name: "cumulativeEth", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "price", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "curveSupply", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "sato", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+export const RISE_ENGINE_ABI = [
+  { type: "function", name: "rise", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "floor", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "reserve", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   {
     type: "function",
     name: "quoteBuy",
     stateMutability: "view",
     inputs: [{ type: "uint256", name: "ethIn" }],
-    outputs: [
-      { type: "uint256", name: "satoOut" },
-      { type: "uint256", name: "fee" },
-    ],
+    outputs: [{ type: "uint256", name: "riseOut" }, { type: "uint256", name: "fee" }],
   },
   {
     type: "function",
     name: "quoteSell",
     stateMutability: "view",
-    inputs: [{ type: "uint256", name: "satoIn" }],
-    outputs: [
-      { type: "uint256", name: "ethOut" },
-      { type: "uint256", name: "fee" },
-    ],
+    inputs: [{ type: "uint256", name: "riseIn" }],
+    outputs: [{ type: "uint256", name: "ethOut" }, { type: "uint256", name: "fee" }],
   },
   { type: "function", name: "buy", stateMutability: "payable", inputs: [], outputs: [] },
-  { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ type: "uint256", name: "satoIn" }], outputs: [] },
+  {
+    type: "function",
+    name: "sell",
+    stateMutability: "nonpayable",
+    inputs: [{ type: "uint256", name: "riseIn" }],
+    outputs: [],
+  },
   {
     type: "event",
     name: "Buy",
     inputs: [
       { type: "address", name: "buyer", indexed: true },
-      { type: "uint256", name: "ethPaid" },
+      { type: "uint256", name: "ethIn" },
       { type: "uint256", name: "fee" },
-      { type: "uint256", name: "satoOut" },
-      { type: "uint256", name: "cumulativeEth" },
+      { type: "uint256", name: "riseOut" },
+      { type: "uint256", name: "newFloor" },
     ],
   },
   {
@@ -41,10 +40,10 @@ export const SATO_HOOK_ABI = [
     name: "Sell",
     inputs: [
       { type: "address", name: "seller", indexed: true },
-      { type: "uint256", name: "satoBurned" },
+      { type: "uint256", name: "riseIn" },
       { type: "uint256", name: "fee" },
       { type: "uint256", name: "ethOut" },
-      { type: "uint256", name: "cumulativeEth" },
+      { type: "uint256", name: "newFloor" },
     ],
   },
 ] as const;

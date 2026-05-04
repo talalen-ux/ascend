@@ -1,8 +1,8 @@
 import { Hero } from "@/components/Hero";
 import { State } from "@/components/State";
-import { Curve } from "@/components/Curve";
+import { Projection } from "@/components/Projection";
 import { Trade } from "@/components/Trade";
-import { Manifesto } from "@/components/Manifesto";
+import { HowItWorks } from "@/components/HowItWorks";
 
 export default function Page() {
   return (
@@ -12,16 +12,16 @@ export default function Page() {
       <div className="grid gap-6 md:grid-cols-[1fr_360px]">
         <div className="space-y-6">
           <State />
-          <Curve />
+          <Projection />
         </div>
         <Trade />
       </div>
 
-      <Manifesto />
+      <HowItWorks />
 
       <footer className="mt-20 flex items-center justify-between text-[11px] text-ash">
-        <span>fair launch · no admin · code only.</span>
-        <span className="font-mono">sato — v0.1</span>
+        <span>fair launch · 1% in · 3% out · no admin</span>
+        <span className="font-mono">rise — v0.1</span>
       </footer>
     </main>
   );

@@ -1,54 +1,63 @@
-# sato
+# rise
 
-> the contract that priced the first buy will price every buy after it. forever.
+> the floor only goes up.
 
-sato is a fair-launch ERC-20 issued from a single bonding-curve contract on
-Ethereum. there is no team wallet, no LP position, no migration path, no
-admin. price is a deterministic function of cumulative ETH ever paid in;
-supply asymptotes at 21,000,000 and never quite reaches it.
-
-## the function
+rise is a fair-launch ERC-20 backed by ETH. one contract holds every wei
+ever paid in. the price floor is `reserve / supply`, and by construction
+it can only go up.
 
 ```
-p(E) = (S/K) · e^( E/S )                    marginal price (ETH per sato)
-N(E) = K · ( 1 - e^( -E/S ) )               total supply at cumulative ETH E
-
-S = 500 ETH
-K = 21,000,000
-fee = 0.3% on both directions, accumulated in the issuer permanently
+floor       = reserve / supply
+buy fee     = 1%   (stays in reserve)
+sell fee    = 3%   (stays in reserve)
 ```
 
-every wei of ETH ever paid in lives in the issuer contract. sells reverse
-the function: burning sato moves cumulative-ETH backward by exactly the
-wedge it represents under the curve, and the user is paid that ETH from
-the contract balance. the contract is its own counterparty.
+both sides trade at the same price — the floor. there is no spread, no
+oracle, no AMM curve. fees are not paid to anyone; they sit in the
+contract permanently and back the floor for everyone.
 
-two protections against same-block manipulation:
+## why the floor only goes up
 
-- each buy is capped at **5 ETH**
-- selling in the same block as your last buy reverts
+let `floor = R / S` where R is the ETH reserve and S is the total supply.
 
-these are the only frictions. there is no other state.
+**a buy adds X ETH:**
+
+```
+new R = R + X
+new S = S + (X·0.99) / floor   ←  1% retained as fee
+new floor / floor = (R + X) / (R + 0.99·X) > 1     for any X > 0
+```
+
+**a sell burns Y rise:**
+
+```
+new R = R − 0.97·Y·floor       ←  3% retained as fee
+new S = S − Y
+new floor / floor = (S − 0.97·Y) / (S − Y) > 1     for any 0 < Y < S
+```
+
+both ratios are strictly greater than 1. the floor is monotone
+non-decreasing. there is no sequence of trades — buys, sells, or any
+mix — that can lower it. ever.
 
 ## architecture
 
 ```
 contracts/
   src/
-    Sato.sol         ERC-20. lowercase name & symbol. sole minter is the issuer.
-    SatoHook.sol     the issuer. buy/sell + curve state. holds all ETH forever.
-    SatoMath.sol     exp/ln helpers (PRBMath SD59x18) for the curve.
-  script/Deploy.s.sol   one-shot deploy. nothing to configure.
-  test/SatoHook.t.sol   round-trip + invariants + cap/lockout tests.
+    Rise.sol          ERC-20. lowercase name & symbol. sole minter is the engine.
+    RiseEngine.sol    buy/sell. holds all ETH forever. no admin, no withdraw.
+  script/Deploy.s.sol one-shot deploy. bootstrap reserve = 0.001 ETH.
+  test/RiseEngine.t.sol  monotonicity proof + solvency invariant + fee math.
 
-app/, components/, hooks/, lib/    Next.js dapp.
-  lib/curve.ts        off-chain mirror of SatoMath for instant quoting.
+app/, components/, hooks/, lib/   Next.js dapp.
+  lib/floor.ts        off-chain mirror for instant quotes & projection chart.
 ```
 
-the issuer constructor deploys the sato token with the issuer address
-locked in as the sole minter. there are no setters, no admin role, no
-upgrade path. once the deploy transaction lands, the contract is the
-contract.
+the engine constructor pays exactly 0.001 ETH and mints 1 rise locked
+into the engine address itself (the engine has no path to spend its own
+balance, so this rise can never be sold). that anchors the initial
+floor at `0.001 ETH / 1 rise = 0.001 ETH per rise`.
 
 ## quickstart
 
@@ -56,7 +65,7 @@ contract.
 
 ```sh
 cd contracts
-forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts PaulRBerg/prb-math
+forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts
 forge build
 forge test -vv
 ```
@@ -65,53 +74,38 @@ forge test -vv
 
 ```sh
 PRIVATE_KEY=0x... forge script script/Deploy.s.sol:Deploy \
-  --rpc-url <rpc> --broadcast
+  --rpc-url <rpc> --broadcast --value 0.001ether
 ```
 
-prints the issuer address and the sato token address. add the issuer
-address to your dapp env as `NEXT_PUBLIC_SATO_HOOK`.
+prints the engine address and the rise token address. set the engine
+address as `NEXT_PUBLIC_RISE_ENGINE` in the dapp env.
 
 ### dapp
 
 ```sh
-echo 'NEXT_PUBLIC_SATO_HOOK=0x...' > .env.local   # optional — demo mode otherwise
-echo 'NEXT_PUBLIC_CHAIN_ID=1'      >> .env.local
+echo 'NEXT_PUBLIC_RISE_ENGINE=0x...' > .env.local   # demo mode otherwise
+echo 'NEXT_PUBLIC_CHAIN_ID=1'        >> .env.local
 npm install
 npm run dev
 ```
 
-## design notes
+## the promises
 
-**why the bootstrap-randomness window was cut.** the manifesto draft
-referenced a per-buy random multiplier between 0.9 and 1.1 over the first
-100 blocks. any range that includes mult > 1 (favoring the buyer) puts the
-issuer in a position where total ETH credited to the curve exceeds total
-ETH actually held, breaking solvency for future sells. dropping the
-window makes the contract deterministic from genesis instead of from
-block 100, which is a cleaner expression of the manifesto's thesis.
-
-**why the fees can never be withdrawn.** there is no withdraw function.
-the fees sit in the issuer balance forever. they back nothing, fund
-nothing, and pay nothing. they exist to widen the round-trip spread by
-0.6%, slowing the wash-trade attack surface without creating a treasury
-that someone has to govern.
-
-**why no Uniswap pool.** the manifesto's thesis is "the contract that
-priced the first buy will price every buy after it." adding a parallel
-AMM pool — even with the issuer wired in as a hook — splits price
-discovery between two surfaces. the only way to honor the thesis
-literally is to make the issuer the only buy/sell venue.
+- no team allocation, no presale, no vesting
+- no admin, no pause, no upgrade, no withdraw function anywhere
+- no off-chain oracle, no off-chain price, no migration path
+- the contract is its own counterparty to every holder
 
 ## status
 
-| area              | status                                  |
-|-------------------|-----------------------------------------|
-| curve math        | implemented + property-tested           |
-| solvency invariant| asserted in fuzz-style sequence test    |
-| 5 ETH per-buy cap | enforced                                |
-| same-block lockout| enforced                                |
-| deploy script     | one-shot, no configuration              |
-| dapp              | live state, curve preview, buy/sell UI  |
+| area                          | status                                       |
+|-------------------------------|----------------------------------------------|
+| floor math                    | implemented + property-tested                |
+| monotone-floor invariant      | asserted under randomized trade sequence     |
+| solvency invariant            | asserted under randomized trade sequence     |
+| fee math (1% / 3%)            | exact-match tested vs. quoter                |
+| bootstrap                     | constructor enforces 0.001 ETH exactly       |
+| dapp                          | live state, projection chart, buy/sell UI    |
 
 not audited. the contract is small and the invariants are simple, but
 that is not a substitute for a third-party review on anything you put

@@ -13,7 +13,7 @@ export function Hero() {
       >
         <Mark />
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          sato · ethereum · genesis-deterministic
+          rise · ethereum · floor only goes up
         </span>
       </motion.div>
 
@@ -23,38 +23,36 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.05 }}
         className="mt-5 text-4xl font-medium leading-[1.05] tracking-tight text-bone md:text-[64px]"
       >
-        the contract that priced the first buy
+        the floor
         <br />
-        will price <span className="text-accent">every buy</span> after it.
-        <br />
-        <span className="text-ash">forever.</span>
+        <span className="text-accent">only goes up.</span>
       </motion.h1>
 
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.15 }}
-        className="mt-6 max-w-xl text-[14px] leading-relaxed text-ash"
+        className="mt-6 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        sato is an erc-20 issued from a single bonding-curve contract. there is
-        no team wallet, no liquidity provider position, no migration path. price
-        is a function of cumulative ether ever paid in. supply asymptotes at
-        21,000,000 and never quite reaches it. read the manifesto below.
+        every rise is backed by ETH held in the contract. the floor is{" "}
+        <span className="font-mono text-bone/80">reserve / supply</span>. buys
+        pay 1%, sells pay 3% — both fees stay in the contract as more backing.
+        the floor mathematically cannot go down.
       </motion.p>
 
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.25 }}
-        className="mt-7 flex items-center gap-4 text-[11px] font-mono text-ash"
+        className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-ash"
       >
-        <span>p(E) = (S/K) · e^(E/S)</span>
+        <span>floor = reserve / supply</span>
         <span className="opacity-30">|</span>
-        <span>S = 500 Ξ</span>
+        <span>buy fee = 1%</span>
         <span className="opacity-30">|</span>
-        <span>K = 21,000,000</span>
+        <span>sell fee = 3%</span>
         <span className="opacity-30">|</span>
-        <span>fee = 0.3%</span>
+        <span>no admin · no upgrade · no withdraw</span>
       </motion.div>
     </header>
   );
@@ -66,13 +64,14 @@ function Mark() {
       <div className="absolute inset-0 rounded-full bg-accent/20 animate-breathe" />
       <svg viewBox="0 0 24 24" className="relative h-7 w-7">
         <circle cx="12" cy="12" r="10" stroke="#f4a261" strokeWidth="1" fill="none" />
-        {/* exponential curve glyph */}
+        {/* upward staircase */}
         <path
-          d="M4 18 Q 12 18 12 12 Q 12 6 20 6"
+          d="M5 18 L9 18 L9 14 L13 14 L13 10 L17 10 L17 6 L19 6"
           stroke="#f4a261"
           strokeWidth="1.5"
           fill="none"
           strokeLinecap="round"
+          strokeLinejoin="round"
         />
       </svg>
     </div>
