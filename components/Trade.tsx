@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import clsx from "clsx";
+import { parseEther } from "viem";
 import { useAscendState } from "@/hooks/useAscendState";
 import { useTrade, type Side } from "@/hooks/useTrade";
 import { quoteBuy, quoteSell } from "@/lib/floor";
@@ -11,9 +12,17 @@ export function Trade() {
   const state = useAscendState();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("0.1");
-  const { execute, pending, error, ready, isSuccess } = useTrade();
+  const { execute, approve, pending, error, ready, isSuccess, allowance } = useTrade();
 
   const isBuy = side === "buy";
+  const amountWei = (() => {
+    try {
+      return parseEther(amount || "0");
+    } catch {
+      return 0n;
+    }
+  })();
+  const needsApproval = !isBuy && amountWei > 0n && allowance < amountWei;
 
   const quote = useMemo(() => {
     const a = Number(amount);
@@ -89,7 +98,10 @@ export function Trade() {
       </div>
 
       <button
-        onClick={() => execute(side, amount).catch(() => {})}
+        onClick={() => {
+          if (needsApproval) approve(amount).catch(() => {});
+          else execute(side, amount).catch(() => {});
+        }}
         disabled={!ready || pending || state.isDemo || !quote}
         className={clsx(
           "mt-7 w-full rounded-lg px-4 py-3.5 text-[12px] font-medium uppercase tracking-widest transition",
@@ -100,14 +112,16 @@ export function Trade() {
         )}
       >
         {state.isDemo
-          ? "Demo · set NEXT_PUBLIC_ASCEND_ENGINE to enable"
+          ? "Demo · configure addresses to enable"
           : pending
           ? "Pending…"
-          : ready
-          ? side === "buy"
-            ? "Buy ascend"
-            : "Sell ascend"
-          : "Connect wallet"}
+          : !ready
+          ? "Connect wallet"
+          : needsApproval
+          ? "Approve ascend → router"
+          : side === "buy"
+          ? "Buy ascend"
+          : "Sell ascend"}
       </button>
 
       {isSuccess && (

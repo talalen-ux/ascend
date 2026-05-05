@@ -163,25 +163,54 @@ export default function Whitepaper() {
         </p>
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.3 reentrancy</h3>
         <p>
-          <code>sell()</code> follows checks-effects-interactions: state
-          mutations precede the ETH transfer. a malicious receiver re-entering{" "}
-          <code>buy()</code> or <code>sell()</code> would observe the
-          updated floor and would not be able to withdraw more than is owed
-          to it. nevertheless the contract should ship with a transient
-          reentrancy guard for defence in depth.
+          the hook&rsquo;s <code>beforeSwap</code> is bracketed by an{" "}
+          <code>_enter</code>/<code>_exit</code> pair backed by EIP-1153
+          transient storage at slot{" "}
+          <code>keccak256(&quot;ascend.hook.reentrancy.v1&quot;)</code>. any
+          re-entry into <code>beforeSwap</code> within the same transaction
+          reverts. the only path that pushes ETH out is{" "}
+          <code>poolManager.settle</code>{`{value: …}`}, which sends to the
+          PoolManager itself, not to user-controlled contracts. token
+          transfers are restricted to <code>mint</code>/<code>burn</code>{" "}
+          on the ascend contract whose only authorized caller is the hook.
         </p>
       </Section>
 
-      <Section title="6 · listing & price discovery">
+      <Section title="6 · single-venue price discovery via uniswap v4">
         <p>
-          the primary venue is the engine itself. for compatibility with
-          third-party indexers (Dexscreener, GeckoTerminal, etc.) a small
-          uniswap v2 pool of ascend/WETH may be seeded post-deploy with the
-          LP tokens permanently locked. the pool acts as a shadow listing:
-          arbitrageurs maintain a soft peg between the uniswap mid-price and
-          the engine floor (within the 4% round-trip band), which gives
-          trackers a price feed while preserving the engine as the venue
-          where the floor mechanic actually compounds.
+          ascend is implemented as a uniswap v4 hook, deployed at a CREATE2
+          address whose low-order bits encode the permission set{" "}
+          <code>{"{afterInitialize, beforeAddLiquidity, beforeSwap, beforeSwapReturnsDelta}"}</code>.
+          the canonical pool has{" "}
+          <code>currency0 = native ETH</code>,{" "}
+          <code>currency1 = ascend</code>, and zero AMM fee. no liquidity
+          is ever added to the pool;{" "}
+          <code>beforeAddLiquidity</code> reverts on any attempt.
+        </p>
+        <p>
+          every swap routes through{" "}
+          <code>PoolManager.swap</code>, which calls the hook&rsquo;s{" "}
+          <code>beforeSwap</code>. the hook computes the floor-priced output,
+          settles the input ETH (or input ascend) into itself, mints (or
+          burns) the matching ascend, and returns a{" "}
+          <code>BeforeSwapDelta</code> that exactly cancels the AMM portion of
+          the swap. the AMM curve runs on zero remaining input. the swapper
+          receives the hook&rsquo;s computed output as if it were AMM output.
+        </p>
+        <p>
+          consequently, the hook is the only price-discovery surface and the
+          only liquidity venue. whether a swap originates from the dapp&rsquo;s{" "}
+          <code>AscendRouter</code>, from Uniswap&rsquo;s v4 swap UI, from a
+          1inch or 0x aggregator, or from any other contract that unlocks
+          the PoolManager and calls <code>swap</code>, the same{" "}
+          <code>beforeSwap</code> handler runs, the same delta is returned,
+          and the same price is paid. the price is identical across venues
+          by execution path, not by arbitrage.
+        </p>
+        <p>
+          listing on dexscreener and geckoterminal is automatic once their
+          indexers cover uniswap v4 on the deployed chain — the pool ID is
+          the public identifier.
         </p>
       </Section>
 

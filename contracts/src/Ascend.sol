@@ -3,29 +3,29 @@ pragma solidity ^0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-/// @title  ascend — the token whose floor only goes up.
+/// @title  ascend — fair-launch ERC-20.
 ///
-/// @notice Lowercase name and symbol. Sole minter is the engine address
-///         supplied at construction; the slot is immutable. There is no
-///         admin, no pause, no upgrade, and no external way to mint or
-///         burn ascend except through the engine's buy/sell paths.
+/// @notice Lowercase name and symbol. Sole minter and burner is the
+///         immutable `hook` address supplied at construction. There is no
+///         admin, no pause, no upgrade. The only path that can change
+///         the supply of ascend is the hook's swap callback.
 contract Ascend is ERC20 {
-    address public immutable engine;
+    address public immutable hook;
 
-    error NotEngine();
+    error NotHook();
 
-    constructor(address _engine) ERC20("ascend", "ascend") {
-        require(_engine != address(0), "engine=0");
-        engine = _engine;
+    constructor(address _hook) ERC20("ascend", "ascend") {
+        require(_hook != address(0), "hook=0");
+        hook = _hook;
     }
 
     function mint(address to, uint256 amount) external {
-        if (msg.sender != engine) revert NotEngine();
+        if (msg.sender != hook) revert NotHook();
         _mint(to, amount);
     }
 
     function burn(address from, uint256 amount) external {
-        if (msg.sender != engine) revert NotEngine();
+        if (msg.sender != hook) revert NotHook();
         _burn(from, amount);
     }
 }

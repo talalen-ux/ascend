@@ -2,8 +2,8 @@
 
 import { useReadContracts } from "wagmi";
 import { formatEther } from "viem";
-import { ASCEND_ENGINE_ABI } from "@/lib/abi";
-import { ASCEND_ENGINE_ADDRESS, isConfigured } from "@/lib/config";
+import { ASCEND_HOOK_ABI } from "@/lib/abi";
+import { ASCEND_HOOK_ADDRESS, isConfigured } from "@/lib/config";
 import { BOOTSTRAP_ETH, BOOTSTRAP_ASCEND, type State } from "@/lib/floor";
 
 export interface AscendState extends State {
@@ -24,8 +24,8 @@ export function useAscendState(): AscendState {
   const { data, isLoading } = useReadContracts({
     contracts: isConfigured
       ? [
-          { address: ASCEND_ENGINE_ADDRESS as `0x${string}`, abi: ASCEND_ENGINE_ABI, functionName: "reserve" },
-          { address: ASCEND_ENGINE_ADDRESS as `0x${string}`, abi: ASCEND_ENGINE_ABI, functionName: "floor" },
+          { address: ASCEND_HOOK_ADDRESS as `0x${string}`, abi: ASCEND_HOOK_ABI, functionName: "reserve" },
+          { address: ASCEND_HOOK_ADDRESS as `0x${string}`, abi: ASCEND_HOOK_ABI, functionName: "floor" },
         ]
       : [],
     query: { enabled: isConfigured, refetchInterval: 12_000 },
