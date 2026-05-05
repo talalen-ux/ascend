@@ -20,7 +20,7 @@
 
 import { quoteBuy, quoteSell, type State } from "../lib/floor";
 
-const ETH_PRICE_USD = 4_000;
+const ETH_PRICE_USD = 2_350;
 const N_BUYS = 200;
 const N_SELLS = 200;
 
