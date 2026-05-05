@@ -15,14 +15,14 @@ export function State() {
   return (
     <section className="mt-12">
       <header className="mb-5 flex items-center justify-between">
-        <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">Now</h2>
+        <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">Vitals</h2>
         <div className="flex items-center gap-2 text-[11px] text-ash">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
               isLoading ? "bg-ash" : isDemo ? "bg-accent animate-pulse-soft" : "bg-emerald-400"
             }`}
           />
-          {isLoading ? "loading" : isDemo ? "demo" : "live"}
+          {isLoading ? "loading" : isDemo ? "demo" : "on-chain"}
         </div>
       </header>
 
@@ -35,11 +35,11 @@ export function State() {
         <Cell
           label="Floor"
           value={`${fmtPrice(floorEth)} Ξ`}
-          hint="ETH per ascend · the price you pay & receive"
+          hint="redemption price · ETH per ascend"
           emphasis
         />
-        <Cell label="Reserve" value={`${fmt(reserveEth, 4)} Ξ`} hint="all ETH backing the floor" />
-        <Cell label="Supply" value={fmt(supply, 2)} hint="ascend in circulation" />
+        <Cell label="Vault" value={`${fmt(reserveEth, 4)} Ξ`} hint="ETH backing every ascend" />
+        <Cell label="Issued" value={fmt(supply, 2)} hint="ascend mined into existence" />
       </motion.div>
     </section>
   );

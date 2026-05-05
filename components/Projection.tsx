@@ -14,9 +14,9 @@ import { simulateFloor } from "@/lib/floor";
 import { useAscendState } from "@/hooks/useAscendState";
 
 const SCENARIOS = [
-  { label: "Light volume", buy: 0.1, sells: 0.5 },
-  { label: "Medium volume", buy: 1, sells: 0.5 },
-  { label: "Heavy volume", buy: 5, sells: 0.5 },
+  { label: "Quiet", buy: 0.1, sells: 0.5 },
+  { label: "Active", buy: 1, sells: 0.5 },
+  { label: "Heavy", buy: 5, sells: 0.5 },
 ];
 
 export function Projection() {
@@ -36,10 +36,11 @@ export function Projection() {
       <header className="mb-5 flex items-baseline justify-between">
         <div>
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-            Projection
+            Floor trajectory
           </h2>
           <p className="mt-1 text-[11px] text-ash">
-            simulated floor over 100 alternating trades — illustration, not a price prediction.
+            simulated under sustained mining and redemption activity.
+            illustrative, not a price forecast.
           </p>
         </div>
         <div className="flex rounded-md border border-edge p-0.5 text-[11px]">

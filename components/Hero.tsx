@@ -13,7 +13,7 @@ export function Hero() {
       >
         <Mark />
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          ascend · ethereum · self-compounding asset
+          ascend · a new ethereum-native asset class
         </span>
       </motion.div>
 
@@ -34,11 +34,11 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.15 }}
         className="mt-6 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        ascend is an ethereum-native asset whose reserve compounds with
-        every trade — buys <em className="not-italic text-bone/80">and</em>{" "}
-        sells. the price floor is{" "}
-        <span className="font-mono text-bone/80">reserve / supply</span>, and
-        by construction it can only go up. holders are paid by traders.
+        ascend is mined into existence by ETH. every wei paid in deepens
+        the vault that backs the asset. the floor — the price every holder
+        can always redeem at — is the vault divided by the issued supply.
+        the contract was born deterministic and runs against the same rules
+        every block after.
       </motion.p>
 
       <motion.div
@@ -47,13 +47,13 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.25 }}
         className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-ash"
       >
-        <span>floor = reserve / supply</span>
+        <span>vault-backed</span>
         <span className="opacity-30">|</span>
-        <span>1% in · 3% out</span>
+        <span>monotone floor</span>
         <span className="opacity-30">|</span>
-        <span>monotone by construction</span>
+        <span>own counterparty</span>
         <span className="opacity-30">|</span>
-        <span>no admin · no upgrade</span>
+        <span>no admin · no upgrade · no migration</span>
       </motion.div>
     </header>
   );

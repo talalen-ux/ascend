@@ -112,7 +112,15 @@ contract AscendRouter is IUnlockCallback {
     }
 
     function _doBuy(Callback memory cb) private returns (uint256 ascendOut) {
-        // Run the swap. The hook intercepts entirely and provides ascend.
+        // ① Pre-settle the input ETH to PoolManager BEFORE calling swap.
+        //    The hook's beforeSwap will physically `take` ETH from the
+        //    PoolManager; that requires the PM to actually hold it. If we
+        //    settled after swap, take would revert with insufficient ETH.
+        poolManager.settle{value: cb.amountIn}();
+
+        // ② Run the swap. The hook intercepts entirely, takes the ETH the
+        //    router just settled, mints+settles ascend on the output side,
+        //    and returns a BeforeSwapDelta that cancels the AMM portion.
         BalanceDelta delta = poolManager.swap(
             poolKey,
             IPoolManager.SwapParams({
@@ -123,13 +131,8 @@ contract AscendRouter is IUnlockCallback {
             ""
         );
 
-        // After the swap: the swapper (this router) owes `cb.amountIn` of
-        // currency0 (ETH) to PoolManager and is owed `ascendOut` of currency1.
-        // Settle ETH side first.
-        poolManager.settle{value: cb.amountIn}();
-
-        // The router is owed currency1 (ascend); take it directly to recipient.
-        // The router's currency1 delta from the swap is +ascendOut.
+        // ③ The router is owed `ascendOut` of currency1; take it directly
+        //    to the recipient.
         int128 ascendDelta = delta.amount1();
         if (ascendDelta <= 0) revert SlippageExceeded();
         ascendOut = uint256(uint128(ascendDelta));
@@ -138,7 +141,17 @@ contract AscendRouter is IUnlockCallback {
     }
 
     function _doSell(Callback memory cb) private returns (uint256 ethOut) {
-        // Run the swap. The hook intercepts entirely and provides ETH.
+        // ① Pre-settle the ascend input to PoolManager BEFORE calling swap.
+        //    The hook's beforeSwap will `take` ascend from the PM; the PM
+        //    must hold it.
+        poolManager.sync(poolKey.currency1);
+        bool ok = ascend.transfer(address(poolManager), cb.amountIn);
+        if (!ok) revert TransferFailed();
+        poolManager.settle();
+
+        // ② Run the swap. Hook takes the ascend, burns it, settles ETH
+        //    back to PM (out of the hook's own reserve), and returns the
+        //    delta that cancels the AMM portion.
         BalanceDelta delta = poolManager.swap(
             poolKey,
             IPoolManager.SwapParams({
@@ -149,14 +162,7 @@ contract AscendRouter is IUnlockCallback {
             ""
         );
 
-        // Router owes the PoolManager `cb.amountIn` of currency1 (ascend);
-        // sync, transfer ascend in, settle.
-        poolManager.sync(poolKey.currency1);
-        bool ok = ascend.transfer(address(poolManager), cb.amountIn);
-        if (!ok) revert TransferFailed();
-        poolManager.settle();
-
-        // Router is owed currency0 (ETH); take to recipient.
+        // ③ Take ETH output to recipient.
         int128 ethDelta = delta.amount0();
         if (ethDelta <= 0) revert SlippageExceeded();
         ethOut = uint256(uint128(ethDelta));

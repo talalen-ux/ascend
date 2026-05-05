@@ -2,7 +2,7 @@ import { Hero } from "@/components/Hero";
 import { State } from "@/components/State";
 import { Projection } from "@/components/Projection";
 import { Trade } from "@/components/Trade";
-import { HowItWorks } from "@/components/HowItWorks";
+import { Mechanism } from "@/components/Mechanism";
 import { VenueRow } from "@/components/VenueRow";
 
 export default function Page() {
@@ -19,10 +19,10 @@ export default function Page() {
         <Trade />
       </div>
 
-      <HowItWorks />
+      <Mechanism />
 
       <footer className="mt-20 flex items-center justify-between text-[11px] text-ash">
-        <span>fair launch · 1% in · 3% out · no admin · uniswap v4</span>
+        <span>vault-backed · monotone floor · own counterparty · uniswap v4</span>
         <span className="font-mono">ascend — v1.0</span>
       </footer>
     </main>

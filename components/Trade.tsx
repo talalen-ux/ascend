@@ -38,18 +38,23 @@ export function Trade() {
   return (
     <section className="panel p-7">
       <header className="flex items-center justify-between">
-        <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">Trade</h2>
+        <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+          Issuance
+        </h2>
         <div className="flex rounded-md border border-edge p-0.5 text-[11px]">
-          {(["buy", "sell"] as Side[]).map((s) => (
+          {([
+            { key: "buy" as Side, label: "mine" },
+            { key: "sell" as Side, label: "redeem" },
+          ]).map((s) => (
             <button
-              key={s}
-              onClick={() => setSide(s)}
+              key={s.key}
+              onClick={() => setSide(s.key)}
               className={clsx(
                 "px-3 py-1 uppercase tracking-widest transition",
-                side === s ? "bg-bone text-ink" : "text-ash hover:text-bone",
+                side === s.key ? "bg-bone text-ink" : "text-ash hover:text-bone",
               )}
             >
-              {s}
+              {s.label}
             </button>
           ))}
         </div>
@@ -57,7 +62,7 @@ export function Trade() {
 
       <div className="mt-7">
         <label className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          {isBuy ? "ETH In" : "ascend In"}
+          {isBuy ? "ETH to mine with" : "ascend to redeem"}
         </label>
         <div className="mt-2 flex items-baseline gap-3">
           <input
@@ -82,7 +87,7 @@ export function Trade() {
           big
         />
         <Row
-          label={isBuy ? "Buy fee (1%)" : "Sell fee (3%)"}
+          label={isBuy ? "Vault premium (1%)" : "Vault premium (3%)"}
           value={quote?.fee ?? 0}
           suffix="Ξ"
           muted
@@ -120,8 +125,8 @@ export function Trade() {
           : needsApproval
           ? "Approve ascend → router"
           : side === "buy"
-          ? "Buy ascend"
-          : "Sell ascend"}
+          ? "Mine ascend"
+          : "Redeem ascend"}
       </button>
 
       {isSuccess && (
@@ -137,8 +142,8 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? "1% of your ETH stays in the contract as more backing for everyone. you mint ascend at the current floor."
-          : "3% of your sale stays in the contract as more backing for everyone. the rest is paid out at the current floor."}
+          ? "you mine new ascend at the current floor. 1% of your ETH stays in the vault, deepening the backing for every existing holder."
+          : "you burn ascend; the vault returns ETH at the current floor. 3% of your gross stays in the vault, deepening the backing for every remaining holder."}
       </p>
     </section>
   );

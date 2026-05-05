@@ -15,9 +15,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ascend — the floor only goes up",
+  title: "ascend — a self-compounding asset",
   description:
-    "ascend is a fair-launch erc-20 backed by ETH. the price floor is reserve / supply, and by construction it can only go up. 1% buy fee, 3% sell fee, no admin, no withdraw.",
+    "ascend is a new ethereum-native asset class — mined into existence by ETH, backed by an on-chain vault, with a floor that is monotone non-decreasing by construction. one hook on uniswap v4 is the only venue.",
 };
 
 export const viewport: Viewport = {
