@@ -4,6 +4,7 @@ import { Projection } from "@/components/Projection";
 import { Trade } from "@/components/Trade";
 import { Mechanism } from "@/components/Mechanism";
 import { VenueRow } from "@/components/VenueRow";
+import { Holdings } from "@/components/Holdings";
 
 export default function Page() {
   return (
@@ -18,6 +19,8 @@ export default function Page() {
         </div>
         <Trade />
       </div>
+
+      <Holdings />
 
       <Mechanism />
 

@@ -16,7 +16,7 @@ html, body {
   font-feature-settings: "ss01", "cv11", "cv02", "calt";
 }
 
-::selection { background: #f4a261; color: #070708; }
+::selection { background: #c5ee47; color: #070708; }
 
 /* Subtle dot grid that fades from center — provides depth without noise. */
 .canvas-bg {

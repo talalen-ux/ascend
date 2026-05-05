@@ -63,12 +63,12 @@ export function Projection() {
           <AreaChart data={data} margin={{ top: 4, right: 12, bottom: 4, left: 12 }}>
             <defs>
               <linearGradient id="ascendFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f4a261" stopOpacity={0.45} />
-                <stop offset="100%" stopColor="#f4a261" stopOpacity={0} />
+                <stop offset="0%" stopColor="#c5ee47" stopOpacity={0.45} />
+                <stop offset="100%" stopColor="#c5ee47" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="ascendStroke" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#e76f51" />
-                <stop offset="100%" stopColor="#f4a261" />
+                <stop offset="0%" stopColor="#9bc234" />
+                <stop offset="100%" stopColor="#c5ee47" />
               </linearGradient>
             </defs>
             <CartesianGrid stroke="#1f1f25" strokeDasharray="2 6" />

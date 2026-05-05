@@ -64,11 +64,11 @@ function Mark() {
     <div className="relative h-7 w-7">
       <div className="absolute inset-0 rounded-full bg-accent/20 animate-breathe" />
       <svg viewBox="0 0 24 24" className="relative h-7 w-7">
-        <circle cx="12" cy="12" r="10" stroke="#f4a261" strokeWidth="1" fill="none" />
+        <circle cx="12" cy="12" r="10" stroke="#c5ee47" strokeWidth="1" fill="none" />
         {/* upward staircase */}
         <path
           d="M5 18 L9 18 L9 14 L13 14 L13 10 L17 10 L17 6 L19 6"
-          stroke="#f4a261"
+          stroke="#c5ee47"
           strokeWidth="1.5"
           fill="none"
           strokeLinecap="round"

@@ -5,7 +5,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // A cool, restrained palette. The accent is a single warm amber.
+        // Single accent: a saturated lime-green. Errors stay amber-orange.
         ink: "#070708",
         canvas: "#0a0a0c",
         panel: "#101013",
@@ -15,8 +15,9 @@ const config: Config = {
         ash: "#71717a",
         bone: "#ededf0",
         glass: "rgba(255,255,255,0.03)",
-        accent: "#f4a261",       // amber
-        accent2: "#e76f51",      // amber-orange
+        accent: "#c5ee47",       // lime-green
+        accentDeep: "#9bc234",   // darker lime, for gradient ends
+        accent2: "#e76f51",      // amber-orange (errors)
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui"],
@@ -28,7 +29,7 @@ const config: Config = {
       },
       boxShadow: {
         soft: "0 1px 0 rgba(255,255,255,0.04) inset, 0 24px 48px -28px rgba(0,0,0,0.6)",
-        glow: "0 0 0 1px rgba(244,162,97,0.18), 0 12px 40px -8px rgba(244,162,97,0.18)",
+        glow: "0 0 0 1px rgba(197,238,71,0.22), 0 12px 40px -8px rgba(197,238,71,0.22)",
       },
       animation: {
         "pulse-soft": "pulse-soft 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
