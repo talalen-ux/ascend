@@ -8,8 +8,8 @@
  * Both fees stay in the contract permanently as additional backing.
  */
 
-export const BUY_FEE_BPS = 100;   // 1%
-export const SELL_FEE_BPS = 300;  // 3%
+export const BUY_FEE_BPS = 500;   // 5% — mining fee, retained in vault
+export const SELL_FEE_BPS = 1500; // 15% — redemption fee, retained in vault
 export const BPS_DENOM = 10_000;
 export const BOOTSTRAP_ETH = 0.001;
 export const BOOTSTRAP_ASCEND = 1;

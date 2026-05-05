@@ -141,7 +141,7 @@ console.log(`  initial reserve    : ${initial.reserveEth} ETH`);
 console.log(`  initial supply     : ${initial.supply} ascend`);
 console.log(`  initial floor      : ${initial.reserveEth / initial.supply} ETH/ascend`);
 console.log(
-  `  fee rates          : 1% buy / 3% sell (retained as backing)`,
+  `  fee rates          : 5% mining / 15% redemption (retained in vault)`,
 );
 console.log(`  trade granularity  : 200 buys + up to 200 sells\n`);
 

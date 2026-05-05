@@ -33,8 +33,8 @@ import {Ascend} from "./Ascend.sol";
 ///
 ///         Mathematical invariants (proved in the whitepaper):
 ///           floor(t)  := reserve(t) / supply(t)        ETH per ascend
-///           BUY  e wei → floor lifts by (R+e)/(R+0.99·e) > 1
-///           SELL r wei → floor lifts by (S−0.97·r)/(S−r) > 1
+///           BUY  e wei → floor lifts by (R+e)/(R+0.95·e) > 1
+///           SELL r wei → floor lifts by (S−0.85·r)/(S−r) > 1
 ///           solvency: reserve ≥ floor · (supply − supply_locked) always
 contract AscendHook is BaseHook {
     using PoolIdLibrary for PoolKey;
@@ -46,9 +46,13 @@ contract AscendHook is BaseHook {
     // immutables and parameters
     // -----------------------------------------------------------------
 
-    /// @notice 1% buy fee, 3% sell fee, expressed in basis points.
-    uint16 public constant BUY_FEE_BPS = 100;
-    uint16 public constant SELL_FEE_BPS = 300;
+    /// @notice 5% mining fee, 15% redemption fee, expressed in basis points.
+    ///         Both retentions stay in the vault permanently as additional
+    ///         backing for every remaining holder. The asymmetry is by
+    ///         design — mining is cheap (the asset wants miners), redemption
+    ///         is taxed (the asset compounds for the patient).
+    uint16 public constant BUY_FEE_BPS = 500;
+    uint16 public constant SELL_FEE_BPS = 1500;
     uint16 public constant BPS_DENOM = 10_000;
 
     /// @notice Bootstrap. Constructor enforces these exactly.

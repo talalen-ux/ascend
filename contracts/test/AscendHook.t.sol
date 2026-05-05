@@ -230,9 +230,9 @@ contract AscendHookTest is Test, Deployers {
     // fee math
     // -----------------------------------------------------------------
 
-    function test_buyFeeIsOnePercent() public {
+    function test_miningFeeIsFivePercent() public {
         (uint256 quoted,) = hook.quoteBuy(1 ether);
-        uint256 expectedFee = 0.01 ether;
+        uint256 expectedFee = 0.05 ether;
         (, uint256 fee) = hook.quoteBuy(1 ether);
         assertEq(fee, expectedFee);
 
@@ -242,14 +242,14 @@ contract AscendHookTest is Test, Deployers {
         assertEq(ascend.balanceOf(alice), got);
     }
 
-    function test_sellFeeIsThreePercent() public {
+    function test_redemptionFeeIsFifteenPercent() public {
         vm.prank(alice);
         router.buy{value: 1 ether}(0, alice);
         uint256 ascBal = ascend.balanceOf(alice);
 
         (uint256 quoted, uint256 fee) = hook.quoteSell(ascBal);
         uint256 gross = (ascBal * address(hook).balance) / ascend.totalSupply();
-        assertEq(fee, (gross * 3) / 100);
+        assertEq(fee, (gross * 15) / 100);
 
         uint256 ethBefore = alice.balance;
         vm.startPrank(alice);

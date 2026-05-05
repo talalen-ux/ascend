@@ -11,7 +11,12 @@ const properties = [
   {
     title: "Mined into existence by ETH",
     body:
-      "every wei of ETH paid in mints ascend at the current floor. the vault deepens, the floor compounds, and the new units join circulation. the ETH itself never leaves the vault except as redemption to a holder.",
+      "every wei of ETH paid in mints ascend at the current floor. 5% of the input stays in the vault as new backing for every existing holder. the ETH itself never leaves the vault except as redemption to a holder.",
+  },
+  {
+    title: "Redemption is taxed",
+    body:
+      "redemption pays 85% of the floor; the remaining 15% stays in the vault and compounds the floor for everyone who keeps holding. mining is cheap; selling pays the patient.",
   },
   {
     title: "Floor is the law",

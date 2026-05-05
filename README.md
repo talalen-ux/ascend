@@ -21,19 +21,20 @@ returns the same delta. **same price by construction**, not by arbitrage.
 ## the math
 
 ```
-floor       = reserve / supply              ETH per ascend (the hook's balance / total supply)
-buy fee     = 1% of ETH in                  retained as additional reserve
-sell fee    = 3% of ETH out                 retained as additional reserve
+floor             = vault / supply        ETH per ascend (hook balance / total supply)
+mining fee        = 5% of ETH in          retained in vault, deepens backing
+redemption fee    = 15% of ETH out        retained in vault, deepens backing
 ```
 
 both sides trade at `floor`. the fees are not paid to anyone — they
-remain in the contract permanently as additional backing.
+remain in the vault permanently as additional backing for every
+remaining holder.
 
-**theorem 1 (buys lift the floor).** for any `e > 0`,
-`floor' / floor = (R + e) / (R + 0.99·e) > 1`.
+**theorem 1 (mining lifts the floor).** for any `e > 0`,
+`floor' / floor = (R + e) / (R + 0.95·e) > 1`.
 
-**theorem 2 (sells lift the floor).** for any `0 < r < S`,
-`floor' / floor = (S − 0.97·r) / (S − r) > 1`.
+**theorem 2 (redemption lifts the floor).** for any `0 < r < S`,
+`floor' / floor = (S − 0.85·r) / (S − r) > 1`.
 
 **corollary (monotone).** the floor at the end of any finite sequence of
 trades is at least the floor at the start. the floor cannot go down,

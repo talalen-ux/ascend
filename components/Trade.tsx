@@ -87,7 +87,7 @@ export function Trade() {
           big
         />
         <Row
-          label={isBuy ? "Vault premium (1%)" : "Vault premium (3%)"}
+          label={isBuy ? "Mining fee (5%)" : "Redemption fee (15%)"}
           value={quote?.fee ?? 0}
           suffix="Ξ"
           muted
@@ -142,8 +142,8 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? "you mine new ascend at the current floor. 1% of your ETH stays in the vault, deepening the backing for every existing holder."
-          : "you burn ascend; the vault returns ETH at the current floor. 3% of your gross stays in the vault, deepening the backing for every remaining holder."}
+          ? "you mine new ascend at the current floor. 5% of your ETH stays in the vault, deepening the backing for every existing holder."
+          : "you burn ascend; the vault returns ETH at the current floor. 15% of your gross stays in the vault, compounding the floor for every remaining holder."}
       </p>
     </section>
   );

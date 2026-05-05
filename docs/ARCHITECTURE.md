@@ -14,8 +14,8 @@ state.
 ## buy
 
 ```
-fee     = ethIn · 0.01
-net     = ethIn · 0.99
+fee     = ethIn · 0.05
+net     = ethIn · 0.95
 floorAt = reserve / supply              (before this trade)
 ascendOut = net / floorAt
 ```
@@ -28,10 +28,10 @@ post-trade floor:
 
 ```
 R'   = R + ethIn
-S'   = S + (0.99 · ethIn) / (R/S)
-       = S + 0.99 · ethIn · S / R
-floor' = R' / S' = R(R+ethIn) / (S(R + 0.99·ethIn))
-floor' / floor = (R+ethIn) / (R + 0.99·ethIn) > 1
+S'   = S + (0.95 · ethIn) / (R/S)
+       = S + 0.95 · ethIn · S / R
+floor' = R' / S' = R(R+ethIn) / (S(R + 0.95·ethIn))
+floor' / floor = (R+ethIn) / (R + 0.95·ethIn) > 1
 ```
 
 floor strictly ascends on any buy with `ethIn > 0`.
@@ -41,8 +41,8 @@ floor strictly ascends on any buy with `ethIn > 0`.
 ```
 floorAt = reserve / supply              (before this trade)
 gross   = ascendIn · floorAt
-fee     = gross · 0.03
-ethOut  = gross · 0.97
+fee     = gross · 0.15
+ethOut  = gross · 0.85
 ```
 
 then burn `ascendIn` from the seller, transfer `ethOut`. the fee stays in
@@ -51,14 +51,14 @@ the contract by not being transferred.
 post-trade floor:
 
 ```
-R'   = R − 0.97 · gross = R − 0.97 · ascendIn · R / S
-       = R · (S − 0.97·ascendIn) / S
+R'   = R − 0.85 · gross = R − 0.85 · ascendIn · R / S
+       = R · (S − 0.85·ascendIn) / S
 S'   = S − ascendIn
-floor' = R' / S' = R · (S − 0.97·ascendIn) / (S · (S − ascendIn))
-floor' / floor = (S − 0.97·ascendIn) / (S − ascendIn)
+floor' = R' / S' = R · (S − 0.85·ascendIn) / (S · (S − ascendIn))
+floor' / floor = (S − 0.85·ascendIn) / (S − ascendIn)
 ```
 
-since `0.97·ascendIn < ascendIn`, the numerator exceeds the denominator and
+since `0.85·ascendIn < ascendIn`, the numerator exceeds the denominator and
 the ratio is strictly greater than 1. floor strictly ascends on any sell
 with `0 < ascendIn < S`.
 
@@ -66,7 +66,7 @@ with `0 < ascendIn < S`.
 
 at any block, the engine balance equals every wei ever paid in by buys,
 minus every wei ever paid out by sells. a sell of `ascendIn` (where
-`ascendIn < S`) pays out `0.97 · ascendIn · R/S < R`. so the engine never
+`ascendIn < S`) pays out `0.85 · ascendIn · R/S < R`. so the engine never
 sends more than it holds. the test suite asserts this after every step
 of a randomized trade sequence.
 
@@ -105,12 +105,12 @@ holds if the engine is the only venue. so it is.
 
 ## what the floor does NOT promise
 
-- the floor is the redemption price *minus 3%*. the seller receives 97%
+- the floor is the redemption price *minus 15%*. the seller receives 85%
   of `ascendIn · floor`. the floor itself is what the contract uses
   internally; what hits a seller's wallet is slightly less.
 - the floor rising does not mean a buy will be profitable on resale
-  immediately. with 1% in and 3% out, a round-trip costs ~4% even on a
-  flat floor. you need the floor to lift by ~4% (compounded by trade
+  immediately. with 5% in and 15% out, a round-trip costs ~20% even on a
+  flat floor. you need the floor to lift by ~20% (compounded by trade
   volume) before a round-trip breaks even.
 - the floor is denominated in ETH. it does not promise USD-denominated
   appreciation; ETH itself can move.

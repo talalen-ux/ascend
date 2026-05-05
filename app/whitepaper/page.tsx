@@ -25,14 +25,14 @@ export default function Whitepaper() {
 
       <Section title="1 · abstract">
         <p>
-          ascend is an erc-20 issued from a single contract on ethereum (the
-          engine). the engine is the only minter, the only burner, and the
-          only source of liquidity. buys mint ascend at the current floor and
-          retain 1% of input as additional reserve; sells burn ascend at the
-          current floor and retain 3% of output as additional reserve. both
-          retentions stay in the contract permanently and back the floor for
-          all remaining holders. there is no admin, no upgrade, and no
-          withdraw function.
+          ascend is an erc-20 issued from a single uniswap v4 hook on
+          ethereum. the hook is the only minter, the only burner, and the
+          only source of liquidity. mining mints ascend at the current floor
+          and retains 5% of input as new reserve; redemption burns ascend at
+          the current floor and retains 15% of gross output as new reserve.
+          both retentions stay in the vault permanently and deepen the
+          backing for every remaining holder. there is no admin, no upgrade,
+          no migration, no withdraw.
         </p>
         <p>
           the floor is defined as{" "}
@@ -53,25 +53,25 @@ export default function Whitepaper() {
           <code>totalSupply()</code>{" "}
           <code>S</code>. both are public on-chain.
         </p>
-        <h3 className="mt-6 text-[14px] font-medium text-bone">2.2 buy</h3>
+        <h3 className="mt-6 text-[14px] font-medium text-bone">2.2 mining</h3>
         <p>
-          a buyer transmits <code>e</code> wei. the engine computes
-          <code className="ml-2"> fee = e · 0.01</code>,
-          <code className="ml-2"> net = e · 0.99</code>,
+          a miner transmits <code>e</code> wei. the hook computes
+          <code className="ml-2"> fee = e · 0.05</code>,
+          <code className="ml-2"> net = e · 0.95</code>,
           <code className="ml-2"> floor₀ = R / S</code>, and mints
           <code className="ml-2"> ascendOut = net / floor₀</code> ascend to the
-          caller. the entire <code>e</code> remains in the contract.
+          caller. the entire <code>e</code> remains in the vault.
         </p>
-        <h3 className="mt-6 text-[14px] font-medium text-bone">2.3 sell</h3>
+        <h3 className="mt-6 text-[14px] font-medium text-bone">2.3 redemption</h3>
         <p>
-          a seller submits <code>r</code> ascend to burn. the engine computes
+          a redeemer submits <code>r</code> ascend to burn. the hook computes
           <code className="ml-2"> floor₀ = R / S</code>,
           <code className="ml-2"> gross = r · floor₀</code>,
-          <code className="ml-2"> fee = gross · 0.03</code>,
-          <code className="ml-2"> ethOut = gross · 0.97</code>; burns
+          <code className="ml-2"> fee = gross · 0.15</code>,
+          <code className="ml-2"> ethOut = gross · 0.85</code>; burns
           <code className="ml-2"> r</code> ascend from the caller; transfers
           <code className="ml-2"> ethOut</code> to the caller. the
-          <code className="mx-1">fee</code> remains in the contract.
+          <code className="mx-1">fee</code> remains in the vault.
         </p>
         <h3 className="mt-6 text-[14px] font-medium text-bone">2.4 bootstrap</h3>
         <p>
@@ -87,36 +87,37 @@ export default function Whitepaper() {
       </Section>
 
       <Section title="3 · proofs">
-        <h3 className="mt-6 text-[14px] font-medium text-bone">theorem 1 · buys lift the floor</h3>
+        <h3 className="mt-6 text-[14px] font-medium text-bone">theorem 1 · mining lifts the floor</h3>
         <p>
           let <code>R, S {">"} 0</code> and let <code>e {">"} 0</code> be the
-          ETH input of a buy. then{" "}
+          ETH input of a mine. then{" "}
           <code>floor&rsquo; / floor &gt; 1</code>.
         </p>
         <p className="mt-3 font-mono text-[12px] text-bone/80">
           R&rsquo; = R + e
           <br />
-          S&rsquo; = S + (0.99 · e) / (R / S) = S + 0.99 · e · S / R
+          S&rsquo; = S + (0.95 · e) / (R / S) = S + 0.95 · e · S / R
           <br />
-          floor&rsquo; = R&rsquo; / S&rsquo; = R(R + e) / (S(R + 0.99 · e))
+          floor&rsquo; = R&rsquo; / S&rsquo; = R(R + e) / (S(R + 0.95 · e))
           <br />
-          floor&rsquo; / floor = (R + e) / (R + 0.99 · e) &gt; 1 ∎
+          floor&rsquo; / floor = (R + e) / (R + 0.95 · e) &gt; 1 ∎
         </p>
 
-        <h3 className="mt-8 text-[14px] font-medium text-bone">theorem 2 · sells lift the floor</h3>
+        <h3 className="mt-8 text-[14px] font-medium text-bone">theorem 2 · redemption lifts the floor</h3>
         <p>
           let <code>R, S {">"} 0</code> and let{" "}
-          <code>0 &lt; r &lt; S</code> be the ascend input of a sell. then{" "}
+          <code>0 &lt; r &lt; S</code> be the ascend input of a redemption.
+          then{" "}
           <code>floor&rsquo; / floor &gt; 1</code>.
         </p>
         <p className="mt-3 font-mono text-[12px] text-bone/80">
-          R&rsquo; = R − 0.97 · r · (R/S) = R · (S − 0.97·r) / S
+          R&rsquo; = R − 0.85 · r · (R/S) = R · (S − 0.85·r) / S
           <br />
           S&rsquo; = S − r
           <br />
-          floor&rsquo; / floor = (S − 0.97·r) / (S − r) &gt; 1
+          floor&rsquo; / floor = (S − 0.85·r) / (S − r) &gt; 1
           <br />
-          since 0.97·r &lt; r ⟹ S − 0.97·r &gt; S − r ∎
+          since 0.85·r &lt; r ⟹ S − 0.85·r &gt; S − r ∎
         </p>
 
         <h3 className="mt-8 text-[14px] font-medium text-bone">corollary · monotone non-decreasing under any sequence</h3>
@@ -130,15 +131,15 @@ export default function Whitepaper() {
 
       <Section title="4 · solvency">
         <p>
-          the engine is solvent against the floor at every block: its ETH
+          the hook is solvent against the floor at every block: its ETH
           balance is always at least <code>floor · (S − S_locked)</code>,
           where <code>S_locked</code> is the bootstrap ascend held by the
-          engine itself. proof: the engine&rsquo;s balance equals every wei
-          ever paid in by buys minus every wei ever paid out by sells. a sell
-          of <code>r &lt; S</code> pays out{" "}
-          <code>0.97 · r · R / S &lt; R</code>. so balance never goes
-          negative, and after any sell the balance per non-bootstrap ascend is
-          at least the prior floor (by theorem 2). ∎
+          hook itself. proof: the hook&rsquo;s balance equals every wei
+          ever paid in by mining minus every wei ever paid out as redemption.
+          a redemption of <code>r &lt; S</code> pays out{" "}
+          <code>0.85 · r · R / S &lt; R</code>. so balance never goes
+          negative, and after any redemption the balance per non-bootstrap
+          ascend is at least the prior floor (by theorem 2). ∎
         </p>
       </Section>
 
@@ -153,13 +154,13 @@ export default function Whitepaper() {
         </ul>
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.2 mev considerations</h3>
         <p>
-          the engine has no slippage in the AMM sense — buy and sell prices
-          are both equal to the on-chain <code>floor</code>. a sandwich
-          attack on a buy would require the attacker to buy in front of the
-          victim and sell behind, but the round-trip 4% friction (1% buy +
-          3% sell) makes any sandwich strictly unprofitable for slippage
-          gains less than 4%, and no buy on this engine creates slippage in
-          excess of 4%.
+          the hook has no slippage in the AMM sense — mining and redemption
+          prices are both pinned to the on-chain <code>floor</code>. a
+          sandwich attack would require the attacker to mine in front of the
+          victim and redeem behind, but the round-trip 20% friction (5%
+          mining + 15% redemption) makes any sandwich strictly unprofitable
+          for slippage gains less than 20%, and no single mine on this hook
+          creates slippage in excess of 20%.
         </p>
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.3 reentrancy</h3>
         <p>
@@ -217,21 +218,24 @@ export default function Whitepaper() {
       <Section title="7 · what the floor does not promise">
         <ul className="mt-2 list-disc space-y-1 pl-6">
           <li>
-            the floor is the redemption price <em>before</em> the 3% sell
-            fee. a seller receives <code>0.97 · floor</code>. the floor
-            itself is the contract&rsquo;s internal accounting datum.
+            the floor is the redemption price <em>before</em> the 15%
+            redemption fee. a redeemer receives <code>0.85 · floor</code>.
+            the floor itself is the contract&rsquo;s internal accounting
+            datum and the inputs to it (vault balance, total supply) are
+            both public.
           </li>
           <li>
-            a round-trip from buy to sell costs ~4% on a flat floor. break-even
-            requires the floor to lift by ~4% (compounded by trade volume)
-            during your hold.
+            a round-trip from mine to redeem costs ~20% on a flat floor.
+            break-even requires the floor to compound by ~20% (driven by
+            other holders&rsquo; volume) during your hold. the asset
+            rewards holding, not flipping.
           </li>
           <li>
             the floor is denominated in ETH. it does not promise USD
             appreciation; ETH itself can move.
           </li>
           <li>
-            the engine is not audited. read the source. the source is the
+            the hook is not audited. read the source. the source is the
             contract.
           </li>
         </ul>
