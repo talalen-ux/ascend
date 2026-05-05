@@ -13,7 +13,7 @@ export function Hero() {
       >
         <Mark />
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          rise · ethereum · self-compounding asset
+          ascend · ethereum · self-compounding asset
         </span>
       </motion.div>
 
@@ -23,9 +23,9 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.05 }}
         className="mt-5 text-4xl font-medium leading-[1.05] tracking-tight text-bone md:text-[64px]"
       >
-        every trade
+        a self-compounding
         <br />
-        is <span className="text-accent">bullish.</span>
+        <span className="text-accent">asset.</span>
       </motion.h1>
 
       <motion.p
@@ -34,9 +34,9 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.15 }}
         className="mt-6 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        rise is an ethereum-native asset whose reserve compounds with every
-        trade — buys <em className="not-italic text-bone/80">and</em> sells.
-        the price floor is{" "}
+        ascend is an ethereum-native asset whose reserve compounds with
+        every trade — buys <em className="not-italic text-bone/80">and</em>{" "}
+        sells. the price floor is{" "}
         <span className="font-mono text-bone/80">reserve / supply</span>, and
         by construction it can only go up. holders are paid by traders.
       </motion.p>

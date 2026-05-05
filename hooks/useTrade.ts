@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseEther } from "viem";
-import { RISE_ENGINE_ABI } from "@/lib/abi";
-import { RISE_ENGINE_ADDRESS, isConfigured } from "@/lib/config";
+import { ASCEND_ENGINE_ABI } from "@/lib/abi";
+import { ASCEND_ENGINE_ADDRESS, isConfigured } from "@/lib/config";
 
 export type Side = "buy" | "sell";
 
@@ -23,15 +23,15 @@ export function useTrade() {
 
       if (side === "buy") {
         writeContract({
-          address: RISE_ENGINE_ADDRESS as `0x${string}`,
-          abi: RISE_ENGINE_ABI,
+          address: ASCEND_ENGINE_ADDRESS as `0x${string}`,
+          abi: ASCEND_ENGINE_ABI,
           functionName: "buy",
           value,
         });
       } else {
         writeContract({
-          address: RISE_ENGINE_ADDRESS as `0x${string}`,
-          abi: RISE_ENGINE_ABI,
+          address: ASCEND_ENGINE_ADDRESS as `0x${string}`,
+          abi: ASCEND_ENGINE_ABI,
           functionName: "sell",
           args: [value],
         });

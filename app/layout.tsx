@@ -15,9 +15,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "rise — the floor only goes up",
+  title: "ascend — the floor only goes up",
   description:
-    "rise is a fair-launch erc-20 backed by ETH. the price floor is reserve / supply, and by construction it can only go up. 1% buy fee, 3% sell fee, no admin, no withdraw.",
+    "ascend is a fair-launch erc-20 backed by ETH. the price floor is reserve / supply, and by construction it can only go up. 1% buy fee, 3% sell fee, no admin, no withdraw.",
 };
 
 export const viewport: Viewport = {

@@ -21,7 +21,7 @@ export default function Page() {
 
       <footer className="mt-20 flex items-center justify-between text-[11px] text-ash">
         <span>fair launch · 1% in · 3% out · no admin</span>
-        <span className="font-mono">rise — v0.1</span>
+        <span className="font-mono">ascend — v0.1</span>
       </footer>
     </main>
   );

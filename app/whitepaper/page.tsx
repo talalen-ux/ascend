@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "rise — whitepaper",
+  title: "ascend — whitepaper",
   description:
-    "rise: a self-compounding ethereum-native asset whose price floor is monotone non-decreasing under any sequence of trades.",
+    "ascend: a self-compounding ethereum-native asset whose price floor is monotone non-decreasing under any sequence of trades.",
 };
 
 export default function Whitepaper() {
@@ -12,7 +12,7 @@ export default function Whitepaper() {
       <header className="mb-12">
         <p className="text-[10px] font-medium uppercase tracking-widest2 text-ash">whitepaper · v1.0</p>
         <h1 className="mt-3 text-4xl font-medium leading-[1.1] tracking-tight text-bone md:text-[52px]">
-          rise — a self-compounding asset on ethereum.
+          ascend — a self-compounding asset on ethereum.
         </h1>
         <p className="mt-5 text-[14px] leading-relaxed text-ash">
           a single contract holds every wei ever paid in. its public ratio
@@ -25,10 +25,10 @@ export default function Whitepaper() {
 
       <Section title="1 · abstract">
         <p>
-          rise is an erc-20 issued from a single contract on ethereum (the
+          ascend is an erc-20 issued from a single contract on ethereum (the
           engine). the engine is the only minter, the only burner, and the
-          only source of liquidity. buys mint rise at the current floor and
-          retain 1% of input as additional reserve; sells burn rise at the
+          only source of liquidity. buys mint ascend at the current floor and
+          retain 1% of input as additional reserve; sells burn ascend at the
           current floor and retain 3% of output as additional reserve. both
           retentions stay in the contract permanently and back the floor for
           all remaining holders. there is no admin, no upgrade, and no
@@ -49,7 +49,7 @@ export default function Whitepaper() {
         <h3 className="mt-6 text-[14px] font-medium text-bone">2.1 state</h3>
         <p>
           the engine&rsquo;s only state is its ETH balance{" "}
-          <code>R</code> and the rise{" "}
+          <code>R</code> and the ascend{" "}
           <code>totalSupply()</code>{" "}
           <code>S</code>. both are public on-chain.
         </p>
@@ -59,17 +59,17 @@ export default function Whitepaper() {
           <code className="ml-2"> fee = e · 0.01</code>,
           <code className="ml-2"> net = e · 0.99</code>,
           <code className="ml-2"> floor₀ = R / S</code>, and mints
-          <code className="ml-2"> riseOut = net / floor₀</code> rise to the
+          <code className="ml-2"> ascendOut = net / floor₀</code> ascend to the
           caller. the entire <code>e</code> remains in the contract.
         </p>
         <h3 className="mt-6 text-[14px] font-medium text-bone">2.3 sell</h3>
         <p>
-          a seller submits <code>r</code> rise to burn. the engine computes
+          a seller submits <code>r</code> ascend to burn. the engine computes
           <code className="ml-2"> floor₀ = R / S</code>,
           <code className="ml-2"> gross = r · floor₀</code>,
           <code className="ml-2"> fee = gross · 0.03</code>,
           <code className="ml-2"> ethOut = gross · 0.97</code>; burns
-          <code className="ml-2"> r</code> rise from the caller; transfers
+          <code className="ml-2"> r</code> ascend from the caller; transfers
           <code className="ml-2"> ethOut</code> to the caller. the
           <code className="mx-1">fee</code> remains in the contract.
         </p>
@@ -77,11 +77,11 @@ export default function Whitepaper() {
         <p>
           at deploy, the engine constructor enforces a one-shot bootstrap of
           exactly <code>0.001 ETH</code> from the deployer and mints
-          <code className="mx-1">1 rise</code> directly to the engine address
+          <code className="mx-1">1 ascend</code> directly to the engine address
           itself. the engine has no path to spend its own balance, so this
-          rise is unsellable; the bootstrap ETH is non-withdrawable. these
+          ascend is unsellable; the bootstrap ETH is non-withdrawable. these
           two values anchor the initial floor at exactly{" "}
-          <code>0.001 ETH per rise</code>. once any user transacts, the floor
+          <code>0.001 ETH per ascend</code>. once any user transacts, the floor
           moves up from there.
         </p>
       </Section>
@@ -106,7 +106,7 @@ export default function Whitepaper() {
         <h3 className="mt-8 text-[14px] font-medium text-bone">theorem 2 · sells lift the floor</h3>
         <p>
           let <code>R, S {">"} 0</code> and let{" "}
-          <code>0 &lt; r &lt; S</code> be the rise input of a sell. then{" "}
+          <code>0 &lt; r &lt; S</code> be the ascend input of a sell. then{" "}
           <code>floor&rsquo; / floor &gt; 1</code>.
         </p>
         <p className="mt-3 font-mono text-[12px] text-bone/80">
@@ -132,12 +132,12 @@ export default function Whitepaper() {
         <p>
           the engine is solvent against the floor at every block: its ETH
           balance is always at least <code>floor · (S − S_locked)</code>,
-          where <code>S_locked</code> is the bootstrap rise held by the
+          where <code>S_locked</code> is the bootstrap ascend held by the
           engine itself. proof: the engine&rsquo;s balance equals every wei
           ever paid in by buys minus every wei ever paid out by sells. a sell
           of <code>r &lt; S</code> pays out{" "}
           <code>0.97 · r · R / S &lt; R</code>. so balance never goes
-          negative, and after any sell the balance per non-bootstrap rise is
+          negative, and after any sell the balance per non-bootstrap ascend is
           at least the prior floor (by theorem 2). ∎
         </p>
       </Section>
@@ -145,11 +145,11 @@ export default function Whitepaper() {
       <Section title="5 · security model">
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.1 capabilities</h3>
         <ul className="mt-2 list-disc space-y-1 pl-6">
-          <li>the engine cannot mint rise outside <code>buy()</code>.</li>
-          <li>the engine cannot burn rise outside <code>sell()</code>.</li>
+          <li>the engine cannot mint ascend outside <code>buy()</code>.</li>
+          <li>the engine cannot burn ascend outside <code>sell()</code>.</li>
           <li>the engine has no function that transfers ETH out except the seller payment in <code>sell()</code>.</li>
           <li>the engine is not <em>Ownable</em>, <em>Pausable</em>, or upgradeable. there is no proxy.</li>
-          <li>the rise token has no admin role. its sole minter is the immutable engine address; its sole burner is the same.</li>
+          <li>the ascend token has no admin role. its sole minter is the immutable engine address; its sole burner is the same.</li>
         </ul>
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.2 mev considerations</h3>
         <p>
@@ -176,7 +176,7 @@ export default function Whitepaper() {
         <p>
           the primary venue is the engine itself. for compatibility with
           third-party indexers (Dexscreener, GeckoTerminal, etc.) a small
-          uniswap v2 pool of rise/WETH may be seeded post-deploy with the
+          uniswap v2 pool of ascend/WETH may be seeded post-deploy with the
           LP tokens permanently locked. the pool acts as a shadow listing:
           arbitrageurs maintain a soft peg between the uniswap mid-price and
           the engine floor (within the 4% round-trip band), which gives
@@ -212,7 +212,7 @@ export default function Whitepaper() {
         <p>
           the floor-ratchet pattern owes intellectual debt to early
           DeFi experiments in protocol-owned liquidity (Olympus, Tokemak)
-          and to redemption-floor tokens (Float, Reflexer). rise differs
+          and to redemption-floor tokens (Float, Reflexer). ascend differs
           by being a single-contract, no-DAO, no-emission, no-rebase
           implementation in which the only mechanism is the ratio of
           reserve to supply and the only state is its evolution.
@@ -220,7 +220,7 @@ export default function Whitepaper() {
       </Section>
 
       <footer className="mt-16 border-t border-edge pt-6 text-[11px] text-ash">
-        rise — v1.0 — released to the public domain. the contract is the spec.
+        ascend — v1.0 — released to the public domain. the contract is the spec.
       </footer>
     </article>
   );

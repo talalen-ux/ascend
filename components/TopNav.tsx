@@ -15,7 +15,7 @@ export function TopNav() {
     <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 pt-6">
       <Link href="/" className="flex items-center gap-2 font-mono text-[12px] text-bone">
         <Mark />
-        rise
+        ascend
       </Link>
       <div className="flex items-center gap-5">
         <div className="hidden gap-5 md:flex">

@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import clsx from "clsx";
-import { useRiseState } from "@/hooks/useRiseState";
+import { useAscendState } from "@/hooks/useAscendState";
 import { useTrade, type Side } from "@/hooks/useTrade";
 import { quoteBuy, quoteSell } from "@/lib/floor";
 
 export function Trade() {
-  const state = useRiseState();
+  const state = useAscendState();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("0.1");
   const { execute, pending, error, ready, isSuccess } = useTrade();
@@ -20,7 +20,7 @@ export function Trade() {
     if (!Number.isFinite(a) || a <= 0) return null;
     if (isBuy) {
       const q = quoteBuy(state, a);
-      return q ? { received: q.riseOut, fee: q.fee, floorAfter: q.floorAfter } : null;
+      return q ? { received: q.ascendOut, fee: q.fee, floorAfter: q.floorAfter } : null;
     }
     const q = quoteSell(state, a);
     return q ? { received: q.ethOut, fee: q.fee, floorAfter: q.floorAfter } : null;
@@ -48,7 +48,7 @@ export function Trade() {
 
       <div className="mt-7">
         <label className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          {isBuy ? "ETH In" : "rise In"}
+          {isBuy ? "ETH In" : "ascend In"}
         </label>
         <div className="mt-2 flex items-baseline gap-3">
           <input
@@ -58,7 +58,7 @@ export function Trade() {
             className="tabular w-full bg-transparent font-mono text-[40px] leading-none text-bone outline-none placeholder:text-ash/40"
             placeholder="0.00"
           />
-          <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "rise"}</span>
+          <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "ascend"}</span>
         </div>
       </div>
 
@@ -68,7 +68,7 @@ export function Trade() {
         <Row
           label="You receive"
           value={quote?.received ?? 0}
-          suffix={isBuy ? "rise" : "Ξ"}
+          suffix={isBuy ? "ascend" : "Ξ"}
           accent
           big
         />
@@ -82,7 +82,7 @@ export function Trade() {
         <Row
           label="Floor after"
           value={quote?.floorAfter ?? state.floorEth}
-          suffix="Ξ / rise"
+          suffix="Ξ / ascend"
           muted
           small
         />
@@ -100,13 +100,13 @@ export function Trade() {
         )}
       >
         {state.isDemo
-          ? "Demo · set NEXT_PUBLIC_RISE_ENGINE to enable"
+          ? "Demo · set NEXT_PUBLIC_ASCEND_ENGINE to enable"
           : pending
           ? "Pending…"
           : ready
           ? side === "buy"
-            ? "Buy rise"
-            : "Sell rise"
+            ? "Buy ascend"
+            : "Sell ascend"
           : "Connect wallet"}
       </button>
 
@@ -123,7 +123,7 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? "1% of your ETH stays in the contract as more backing for everyone. you mint rise at the current floor."
+          ? "1% of your ETH stays in the contract as more backing for everyone. you mint ascend at the current floor."
           : "3% of your sale stays in the contract as more backing for everyone. the rest is paid out at the current floor."}
       </p>
     </section>

@@ -1,5 +1,5 @@
-export const RISE_ENGINE_ABI = [
-  { type: "function", name: "rise", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+export const ASCEND_ENGINE_ABI = [
+  { type: "function", name: "ascend", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "floor", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "reserve", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   {
@@ -7,13 +7,13 @@ export const RISE_ENGINE_ABI = [
     name: "quoteBuy",
     stateMutability: "view",
     inputs: [{ type: "uint256", name: "ethIn" }],
-    outputs: [{ type: "uint256", name: "riseOut" }, { type: "uint256", name: "fee" }],
+    outputs: [{ type: "uint256", name: "ascendOut" }, { type: "uint256", name: "fee" }],
   },
   {
     type: "function",
     name: "quoteSell",
     stateMutability: "view",
-    inputs: [{ type: "uint256", name: "riseIn" }],
+    inputs: [{ type: "uint256", name: "ascendIn" }],
     outputs: [{ type: "uint256", name: "ethOut" }, { type: "uint256", name: "fee" }],
   },
   { type: "function", name: "buy", stateMutability: "payable", inputs: [], outputs: [] },
@@ -21,7 +21,7 @@ export const RISE_ENGINE_ABI = [
     type: "function",
     name: "sell",
     stateMutability: "nonpayable",
-    inputs: [{ type: "uint256", name: "riseIn" }],
+    inputs: [{ type: "uint256", name: "ascendIn" }],
     outputs: [],
   },
   {
@@ -31,7 +31,7 @@ export const RISE_ENGINE_ABI = [
       { type: "address", name: "buyer", indexed: true },
       { type: "uint256", name: "ethIn" },
       { type: "uint256", name: "fee" },
-      { type: "uint256", name: "riseOut" },
+      { type: "uint256", name: "ascendOut" },
       { type: "uint256", name: "newFloor" },
     ],
   },
@@ -40,7 +40,7 @@ export const RISE_ENGINE_ABI = [
     name: "Sell",
     inputs: [
       { type: "address", name: "seller", indexed: true },
-      { type: "uint256", name: "riseIn" },
+      { type: "uint256", name: "ascendIn" },
       { type: "uint256", name: "fee" },
       { type: "uint256", name: "ethOut" },
       { type: "uint256", name: "newFloor" },

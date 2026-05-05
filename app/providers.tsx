@@ -10,7 +10,7 @@ const wagmi = createConfig({
   chains: [mainnet, sepolia],
   connectors: [
     injected({ shimDisconnect: true }),
-    coinbaseWallet({ appName: "rise" }),
+    coinbaseWallet({ appName: "ascend" }),
   ],
   transports: {
     [mainnet.id]: http(),

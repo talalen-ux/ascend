@@ -6,17 +6,17 @@ const steps = [
   {
     n: "01",
     title: "buy at the floor",
-    body: "you send ETH. 1% stays in the contract as more backing for everyone. you mint rise at the current floor price.",
+    body: "you send ETH. 1% stays in the contract as more backing for everyone. you mint ascend at the current floor price.",
   },
   {
     n: "02",
     title: "sell at the floor",
-    body: "you burn rise. 3% of your gross stays in the contract as more backing for everyone. you receive ETH at the current floor price.",
+    body: "you burn ascend. 3% of your gross stays in the contract as more backing for everyone. you receive ETH at the current floor price.",
   },
   {
     n: "03",
     title: "the floor lifts",
-    body: "every trade leaves more ETH per remaining rise in the contract. that ratio — reserve ÷ supply — is the floor. by construction it can only go up.",
+    body: "every trade leaves more ETH per remaining ascend in the contract. that ratio — reserve ÷ supply — is the floor. by construction it can only go up.",
   },
 ];
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useRiseState } from "@/hooks/useRiseState";
+import { useAscendState } from "@/hooks/useAscendState";
 
 const fmt = (n: number, d = 4) =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: d }) : "—";
@@ -10,7 +10,7 @@ const fmtPrice = (n: number) =>
   n < 1e-4 ? n.toExponential(3) : fmt(n, 8);
 
 export function State() {
-  const { floorEth, reserveEth, supply, isDemo, isLoading } = useRiseState();
+  const { floorEth, reserveEth, supply, isDemo, isLoading } = useAscendState();
 
   return (
     <section className="mt-12">
@@ -35,11 +35,11 @@ export function State() {
         <Cell
           label="Floor"
           value={`${fmtPrice(floorEth)} Ξ`}
-          hint="ETH per rise · the price you pay & receive"
+          hint="ETH per ascend · the price you pay & receive"
           emphasis
         />
         <Cell label="Reserve" value={`${fmt(reserveEth, 4)} Ξ`} hint="all ETH backing the floor" />
-        <Cell label="Supply" value={fmt(supply, 2)} hint="rise in circulation" />
+        <Cell label="Supply" value={fmt(supply, 2)} hint="ascend in circulation" />
       </motion.div>
     </section>
   );

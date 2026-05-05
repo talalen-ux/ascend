@@ -1,8 +1,8 @@
-# rise
+# ascend
 
 > every trade is bullish.
 
-rise is a self-compounding ethereum-native asset. one contract holds
+ascend is a self-compounding ethereum-native asset. one contract holds
 every wei ever paid in. the price floor is `reserve / supply`, and by
 construction it can only go up.
 
@@ -22,7 +22,7 @@ let `floor = R / S`.
 
 ```
 buy of e ETH:    floor' / floor = (R + e) / (R + 0.99·e)            > 1
-sell of r rise:  floor' / floor = (S − 0.97·r) / (S − r)            > 1
+sell of r ascend:  floor' / floor = (S − 0.97·r) / (S − r)            > 1
 ```
 
 both ratios are strictly greater than 1. the floor is monotone
@@ -40,8 +40,8 @@ out. this is the engine — the only venue where the floor lift actually
 happens.
 
 **2. via uniswap v2 (for indexer visibility).** post-deploy, a small
-locked-LP rise/WETH pool is created so trackers like Dexscreener and
-GeckoTerminal pick rise up automatically. arbitrageurs keep its mid-price
+locked-LP ascend/WETH pool is created so trackers like Dexscreener and
+GeckoTerminal pick ascend up automatically. arbitrageurs keep its mid-price
 soft-pegged to the engine floor (within the 4% round-trip band).
 trading directly through uniswap works but execution is worse than the
 engine for any non-trivial size — the dapp will always route to the
@@ -52,10 +52,10 @@ engine.
 ```
 contracts/
   src/
-    Rise.sol          ERC-20. lowercase name & symbol. sole minter is the engine.
-    RiseEngine.sol    buy/sell. holds all ETH forever. no admin, no withdraw.
+    Ascend.sol          ERC-20. lowercase name & symbol. sole minter is the engine.
+    AscendEngine.sol    buy/sell. holds all ETH forever. no admin, no withdraw.
   script/Deploy.s.sol one-shot deploy. bootstrap reserve = 0.001 ETH.
-  test/RiseEngine.t.sol  monotonicity proof + solvency invariant + fee math.
+  test/AscendEngine.t.sol  monotonicity proof + solvency invariant + fee math.
 
 scripts/
   seedUniswap.ts      post-deploy: seed v2 pool + lock LP for Dexscreener.
@@ -83,15 +83,15 @@ PRIVATE_KEY=0x... forge script script/Deploy.s.sol:Deploy \
   --rpc-url <rpc> --broadcast --value 0.001ether
 ```
 
-prints the engine address and the rise token address. set the engine
-address as `NEXT_PUBLIC_RISE_ENGINE` in the dapp env.
+prints the engine address and the ascend token address. set the engine
+address as `NEXT_PUBLIC_ASCEND_ENGINE` in the dapp env.
 
 ### post-deploy: seed the uniswap pool (for Dexscreener)
 
 ```sh
 PRIVATE_KEY=0x... \
 RPC_URL=https://eth.llamarpc.com \
-RISE_ENGINE=0x...                                          \
+ASCEND_ENGINE=0x...                                          \
 UNI_V2_ROUTER=0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D   \
 SEED_ETH=0.1                                                \
   npx tsx scripts/seedUniswap.ts
@@ -99,8 +99,8 @@ SEED_ETH=0.1                                                \
 
 what this does:
 
-1. buys 0.1 ETH worth of rise from the engine
-2. adds 0.1 ETH + the resulting rise as v2 liquidity on uniswap
+1. buys 0.1 ETH worth of ascend from the engine
+2. adds 0.1 ETH + the resulting ascend as v2 liquidity on uniswap
 3. transfers the LP tokens to `0x000…dEaD`, locked forever
 
 after this transaction confirms, Dexscreener and GeckoTerminal will
@@ -111,7 +111,7 @@ script prints it).
 
 ```sh
 cat > .env.local <<EOF
-NEXT_PUBLIC_RISE_ENGINE=0x...   # engine address from deploy
+NEXT_PUBLIC_ASCEND_ENGINE=0x...   # engine address from deploy
 NEXT_PUBLIC_CHAIN_ID=1
 EOF
 npm install

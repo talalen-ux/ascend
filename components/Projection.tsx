@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { simulateFloor } from "@/lib/floor";
-import { useRiseState } from "@/hooks/useRiseState";
+import { useAscendState } from "@/hooks/useAscendState";
 
 const SCENARIOS = [
   { label: "Light volume", buy: 0.1, sells: 0.5 },
@@ -20,7 +20,7 @@ const SCENARIOS = [
 ];
 
 export function Projection() {
-  const state = useRiseState();
+  const state = useAscendState();
   const [scenario, setScenario] = useState(0);
   const cfg = SCENARIOS[scenario];
 
@@ -61,11 +61,11 @@ export function Projection() {
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 12, bottom: 4, left: 12 }}>
             <defs>
-              <linearGradient id="riseFill" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="ascendFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#f4a261" stopOpacity={0.45} />
                 <stop offset="100%" stopColor="#f4a261" stopOpacity={0} />
               </linearGradient>
-              <linearGradient id="riseStroke" x1="0" y1="0" x2="1" y2="0">
+              <linearGradient id="ascendStroke" x1="0" y1="0" x2="1" y2="0">
                 <stop offset="0%" stopColor="#e76f51" />
                 <stop offset="100%" stopColor="#f4a261" />
               </linearGradient>
@@ -103,9 +103,9 @@ export function Projection() {
             <Area
               type="monotone"
               dataKey="floor"
-              stroke="url(#riseStroke)"
+              stroke="url(#ascendStroke)"
               strokeWidth={1.5}
-              fill="url(#riseFill)"
+              fill="url(#ascendFill)"
               isAnimationActive
               animationDuration={500}
             />
