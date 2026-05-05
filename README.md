@@ -1,15 +1,15 @@
 # rise
 
-> the floor only goes up.
+> every trade is bullish.
 
-rise is a fair-launch ERC-20 backed by ETH. one contract holds every wei
-ever paid in. the price floor is `reserve / supply`, and by construction
-it can only go up.
+rise is a self-compounding ethereum-native asset. one contract holds
+every wei ever paid in. the price floor is `reserve / supply`, and by
+construction it can only go up.
 
 ```
 floor       = reserve / supply
-buy fee     = 1%   (stays in reserve)
-sell fee    = 3%   (stays in reserve)
+buy fee     = 1%   (stays in reserve, lifts the floor)
+sell fee    = 3%   (stays in reserve, lifts the floor)
 ```
 
 both sides trade at the same price — the floor. there is no spread, no
@@ -18,27 +18,34 @@ contract permanently and back the floor for everyone.
 
 ## why the floor only goes up
 
-let `floor = R / S` where R is the ETH reserve and S is the total supply.
-
-**a buy adds X ETH:**
+let `floor = R / S`.
 
 ```
-new R = R + X
-new S = S + (X·0.99) / floor   ←  1% retained as fee
-new floor / floor = (R + X) / (R + 0.99·X) > 1     for any X > 0
-```
-
-**a sell burns Y rise:**
-
-```
-new R = R − 0.97·Y·floor       ←  3% retained as fee
-new S = S − Y
-new floor / floor = (S − 0.97·Y) / (S − Y) > 1     for any 0 < Y < S
+buy of e ETH:    floor' / floor = (R + e) / (R + 0.99·e)            > 1
+sell of r rise:  floor' / floor = (S − 0.97·r) / (S − r)            > 1
 ```
 
 both ratios are strictly greater than 1. the floor is monotone
 non-decreasing. there is no sequence of trades — buys, sells, or any
 mix — that can lower it. ever.
+
+read the [whitepaper](./app/whitepaper/page.tsx) for the full
+treatment, including the solvency invariant and the security model.
+
+## how to enter and exit
+
+**1. via the dapp (primary venue, best execution).** connect any web3
+wallet on the homepage and use the trade panel. fees are 1% in / 3%
+out. this is the engine — the only venue where the floor lift actually
+happens.
+
+**2. via uniswap v2 (for indexer visibility).** post-deploy, a small
+locked-LP rise/WETH pool is created so trackers like Dexscreener and
+GeckoTerminal pick rise up automatically. arbitrageurs keep its mid-price
+soft-pegged to the engine floor (within the 4% round-trip band).
+trading directly through uniswap works but execution is worse than the
+engine for any non-trivial size — the dapp will always route to the
+engine.
 
 ## architecture
 
@@ -50,14 +57,13 @@ contracts/
   script/Deploy.s.sol one-shot deploy. bootstrap reserve = 0.001 ETH.
   test/RiseEngine.t.sol  monotonicity proof + solvency invariant + fee math.
 
-app/, components/, hooks/, lib/   Next.js dapp.
-  lib/floor.ts        off-chain mirror for instant quotes & projection chart.
-```
+scripts/
+  seedUniswap.ts      post-deploy: seed v2 pool + lock LP for Dexscreener.
 
-the engine constructor pays exactly 0.001 ETH and mints 1 rise locked
-into the engine address itself (the engine has no path to spend its own
-balance, so this rise can never be sold). that anchors the initial
-floor at `0.001 ETH / 1 rise = 0.001 ETH per rise`.
+app/, components/, hooks/, lib/   Next.js dapp.
+  app/whitepaper/     formal whitepaper page.
+  components/Connect  web3 wallet connect (injected + Coinbase Wallet).
+```
 
 ## quickstart
 
@@ -80,11 +86,34 @@ PRIVATE_KEY=0x... forge script script/Deploy.s.sol:Deploy \
 prints the engine address and the rise token address. set the engine
 address as `NEXT_PUBLIC_RISE_ENGINE` in the dapp env.
 
+### post-deploy: seed the uniswap pool (for Dexscreener)
+
+```sh
+PRIVATE_KEY=0x... \
+RPC_URL=https://eth.llamarpc.com \
+RISE_ENGINE=0x...                                          \
+UNI_V2_ROUTER=0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D   \
+SEED_ETH=0.1                                                \
+  npx tsx scripts/seedUniswap.ts
+```
+
+what this does:
+
+1. buys 0.1 ETH worth of rise from the engine
+2. adds 0.1 ETH + the resulting rise as v2 liquidity on uniswap
+3. transfers the LP tokens to `0x000…dEaD`, locked forever
+
+after this transaction confirms, Dexscreener and GeckoTerminal will
+automatically index the pair within minutes. share the pair address (the
+script prints it).
+
 ### dapp
 
 ```sh
-echo 'NEXT_PUBLIC_RISE_ENGINE=0x...' > .env.local   # demo mode otherwise
-echo 'NEXT_PUBLIC_CHAIN_ID=1'        >> .env.local
+cat > .env.local <<EOF
+NEXT_PUBLIC_RISE_ENGINE=0x...   # engine address from deploy
+NEXT_PUBLIC_CHAIN_ID=1
+EOF
 npm install
 npm run dev
 ```
@@ -106,6 +135,9 @@ npm run dev
 | fee math (1% / 3%)            | exact-match tested vs. quoter                |
 | bootstrap                     | constructor enforces 0.001 ETH exactly       |
 | dapp                          | live state, projection chart, buy/sell UI    |
+| wallet connect                | injected + Coinbase Wallet via wagmi v2      |
+| whitepaper page               | shipped at `/whitepaper`                     |
+| uniswap seed script           | one-shot, locks LP, dexscreener-ready        |
 
 not audited. the contract is small and the invariants are simple, but
 that is not a substitute for a third-party review on anything you put

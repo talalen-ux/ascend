@@ -24,11 +24,16 @@ export const viewport: Viewport = {
   themeColor: "#070708",
 };
 
+import { TopNav } from "@/components/TopNav";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body className="canvas-bg min-h-screen font-sans">
-        <Providers>{children}</Providers>
+        <Providers>
+          <TopNav />
+          {children}
+        </Providers>
       </body>
     </html>
   );

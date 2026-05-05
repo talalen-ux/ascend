@@ -13,7 +13,7 @@ export function Hero() {
       >
         <Mark />
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          rise · ethereum · floor only goes up
+          rise · ethereum · self-compounding asset
         </span>
       </motion.div>
 
@@ -23,9 +23,9 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.05 }}
         className="mt-5 text-4xl font-medium leading-[1.05] tracking-tight text-bone md:text-[64px]"
       >
-        the floor
+        every trade
         <br />
-        <span className="text-accent">only goes up.</span>
+        is <span className="text-accent">bullish.</span>
       </motion.h1>
 
       <motion.p
@@ -34,10 +34,11 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.15 }}
         className="mt-6 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        every rise is backed by ETH held in the contract. the floor is{" "}
-        <span className="font-mono text-bone/80">reserve / supply</span>. buys
-        pay 1%, sells pay 3% — both fees stay in the contract as more backing.
-        the floor mathematically cannot go down.
+        rise is an ethereum-native asset whose reserve compounds with every
+        trade — buys <em className="not-italic text-bone/80">and</em> sells.
+        the price floor is{" "}
+        <span className="font-mono text-bone/80">reserve / supply</span>, and
+        by construction it can only go up. holders are paid by traders.
       </motion.p>
 
       <motion.div
@@ -48,11 +49,11 @@ export function Hero() {
       >
         <span>floor = reserve / supply</span>
         <span className="opacity-30">|</span>
-        <span>buy fee = 1%</span>
+        <span>1% in · 3% out</span>
         <span className="opacity-30">|</span>
-        <span>sell fee = 3%</span>
+        <span>monotone by construction</span>
         <span className="opacity-30">|</span>
-        <span>no admin · no upgrade · no withdraw</span>
+        <span>no admin · no upgrade</span>
       </motion.div>
     </header>
   );

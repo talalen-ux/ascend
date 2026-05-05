@@ -6,7 +6,7 @@ import { HowItWorks } from "@/components/HowItWorks";
 
 export default function Page() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-14 md:py-20">
+    <main className="mx-auto max-w-5xl px-6 py-10 md:py-14">
       <Hero />
 
       <div className="grid gap-6 md:grid-cols-[1fr_360px]">
