@@ -13,8 +13,6 @@ jobs:
         working-directory: contracts
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
@@ -22,10 +20,7 @@ jobs:
         run: |
           forge install --no-commit \
             foundry-rs/forge-std \
-            OpenZeppelin/openzeppelin-contracts \
-            PaulRBerg/prb-math \
-            Uniswap/v4-core \
-            Uniswap/v4-periphery
+            OpenZeppelin/openzeppelin-contracts
       - name: forge build
         run: forge build --sizes
       - name: forge test
@@ -33,23 +28,14 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
       - run: npm ci || npm install
       - run: npm run typecheck
-
-  indexer:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend/indexer
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci || npm install
-      - run: npm run typecheck
+      - run: npm run build

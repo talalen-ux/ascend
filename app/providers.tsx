@@ -5,9 +5,10 @@ import { mainnet, sepolia } from "wagmi/chains";
 import { injected, coinbaseWallet } from "wagmi/connectors";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
+import { CHAIN_ID } from "@/lib/config";
 
 const wagmi = createConfig({
-  chains: [mainnet, sepolia],
+  chains: CHAIN_ID === sepolia.id ? [sepolia] : [mainnet],
   connectors: [
     injected({ shimDisconnect: true }),
     coinbaseWallet({ appName: "ascend" }),

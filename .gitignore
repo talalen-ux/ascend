@@ -12,9 +12,4 @@ contracts/cache/
 contracts/broadcast/
 contracts/lib/
 
-# indexer state
-backend/indexer/*.db
-backend/indexer/*.db-shm
-backend/indexer/*.db-wal
-
 tsconfig.tsbuildinfo

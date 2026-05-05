@@ -11,7 +11,7 @@ export function Trade() {
   const state = useAscendState();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("0.1");
-  const { execute, pending, error, ready, isSuccess } = useTrade();
+  const { execute, pending, error, ready, isSuccess, wrongChain, expectedChainId } = useTrade();
 
   const isBuy = side === "buy";
 
@@ -103,11 +103,13 @@ export function Trade() {
           ? "Demo · set NEXT_PUBLIC_ASCEND_ENGINE to enable"
           : pending
           ? "Pending…"
-          : ready
-          ? side === "buy"
-            ? "Buy ascend"
-            : "Sell ascend"
-          : "Connect wallet"}
+          : !ready
+          ? "Connect wallet"
+          : wrongChain
+          ? `Switch network (chain ${expectedChainId})`
+          : side === "buy"
+          ? "Buy ascend"
+          : "Sell ascend"}
       </button>
 
       {isSuccess && (
