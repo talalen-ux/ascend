@@ -37,7 +37,7 @@ const properties = [
 
 export function Mechanism() {
   return (
-    <section id="mechanism" className="mt-24 space-y-10">
+    <section id="mechanism" className="mt-16 space-y-10">
       <header className="max-w-2xl">
         <p className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
           Mechanism

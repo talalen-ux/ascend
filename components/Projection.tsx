@@ -32,7 +32,7 @@ export function Projection() {
   );
 
   return (
-    <section className="panel mt-6 p-6">
+    <section className="panel p-6">
       <header className="mb-5 flex items-baseline justify-between">
         <div>
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">

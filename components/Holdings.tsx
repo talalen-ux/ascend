@@ -9,9 +9,9 @@ import { ASCEND_TOKEN_ADDRESS, isConfigured } from "@/lib/config";
 import { ERC20_ABI } from "@/lib/abi";
 import { useAscendState } from "@/hooks/useAscendState";
 
-const GRID_COLS = 16;
-const GRID_ROWS = 10;
-const TOTAL_SQUARES = GRID_COLS * GRID_ROWS; // 160
+const GRID_COLS = 12;
+const GRID_ROWS = 12;
+const TOTAL_SQUARES = GRID_COLS * GRID_ROWS; // 144 — square grid
 const ETH_PRICE_USD = 2_350;
 
 const truncate = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
@@ -44,7 +44,7 @@ export function Holdings() {
   const perSquareUsd = perSquareEth * ETH_PRICE_USD;
 
   return (
-    <section className="panel mt-12 p-7">
+    <section className="panel mt-10 p-7">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-accent">

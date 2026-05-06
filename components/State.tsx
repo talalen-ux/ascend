@@ -22,7 +22,7 @@ export function State() {
   } = useAscendState();
 
   return (
-    <section className="mt-12">
+    <section className="mt-10">
       <header className="mb-5 flex items-center justify-between">
         <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">Vitals</h2>
         <div className="flex items-center gap-2 text-[11px] text-ash">

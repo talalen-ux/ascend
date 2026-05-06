@@ -11,12 +11,11 @@ export default function Page() {
     <main className="mx-auto max-w-5xl px-6 py-10 md:py-14">
       <Hero />
 
-      <div className="grid gap-6 md:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <State />
-          <VenueRow />
-          <Projection />
-        </div>
+      <State />
+      <VenueRow />
+
+      <div className="mt-6 grid gap-6 md:grid-cols-2">
+        <Projection />
         <Trade />
       </div>
 
