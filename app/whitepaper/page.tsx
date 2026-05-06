@@ -27,12 +27,15 @@ export default function Whitepaper() {
         <p>
           ascend is an erc-20 issued from a single uniswap v4 hook on
           ethereum. the hook is the only minter, the only burner, and the
-          only source of liquidity. mining mints ascend at the current floor
-          and retains 5% of input as new reserve; redemption burns ascend at
-          the current floor and retains 15% of gross output as new reserve.
-          both retentions stay in the vault permanently and deepen the
-          backing for every remaining holder. there is no admin, no upgrade,
-          no migration, no withdraw.
+          only source of liquidity. mining mints ascend at a{" "}
+          <code>2 × floor</code> trading price (100% premium) with a 5%
+          retention fee; redemption burns ascend at the floor with a 15%
+          retention fee. all three flows — premium, mining fee, redemption
+          fee — stay in the vault permanently and deepen the backing for
+          every remaining holder. market cap = price · supply ={" "}
+          <code>2 · vault</code> by construction, strictly greater than the
+          on-chain backing. there is no admin, no upgrade, no migration,
+          no withdraw.
         </p>
         <p>
           the floor is defined as{" "}
@@ -89,18 +92,22 @@ export default function Whitepaper() {
       <Section title="3 · proofs">
         <h3 className="mt-6 text-[14px] font-medium text-bone">theorem 1 · mining lifts the floor</h3>
         <p>
-          let <code>R, S {">"} 0</code> and let <code>e {">"} 0</code> be the
-          ETH input of a mine. then{" "}
-          <code>floor&rsquo; / floor &gt; 1</code>.
+          let <code>R, S {">"} 0</code>, let <code>P = 2</code> be the price
+          multiplier (1 + 100% premium), and let <code>e {">"} 0</code> be the
+          ETH input of a mine. mining at price <code>P · floor</code> with a
+          5% fee yields:
         </p>
         <p className="mt-3 font-mono text-[12px] text-bone/80">
           R&rsquo; = R + e
           <br />
-          S&rsquo; = S + (0.95 · e) / (R / S) = S + 0.95 · e · S / R
+          S&rsquo; = S + (0.95 · e) / (P · R/S) = S · (1 + 0.475 · e/R)
           <br />
-          floor&rsquo; = R&rsquo; / S&rsquo; = R(R + e) / (S(R + 0.95 · e))
-          <br />
-          floor&rsquo; / floor = (R + e) / (R + 0.95 · e) &gt; 1 ∎
+          floor&rsquo; / floor = (R + e) / (R + 0.475 · e) &gt; 1 ∎
+        </p>
+        <p className="mt-3">
+          the floor lifts ~10× harder per unit of ETH than under fees alone,
+          because the premium half of the input deepens the vault without
+          minting matching supply.
         </p>
 
         <h3 className="mt-8 text-[14px] font-medium text-bone">theorem 2 · redemption lifts the floor</h3>

@@ -242,6 +242,22 @@ contract AscendHookTest is Test, Deployers {
         assertEq(ascend.balanceOf(alice), got);
     }
 
+    function test_priceIsTwiceFloor() public view {
+        // 100% mining premium → price = 2 × floor
+        assertEq(hook.price(), 2 * hook.floor(), "price != 2 × floor");
+    }
+
+    function test_marketCapIsTwoVaults() public {
+        // marketCap = price · supply = 2 · floor · supply = 2 · vault
+        vm.prank(alice);
+        router.buy{value: 1 ether}(0, alice);
+        uint256 expected = 2 * address(hook).balance;
+        // marketCap is in wei terms (price/1e18 * supply). After both rebases:
+        // marketCap returns price·supply/1e18 wei.
+        uint256 mc = hook.marketCap();
+        assertApproxEqRel(mc, expected, 1e15); // within 0.1%
+    }
+
     function test_redemptionFeeIsFifteenPercent() public {
         vm.prank(alice);
         router.buy{value: 1 ether}(0, alice);

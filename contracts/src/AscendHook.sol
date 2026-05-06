@@ -55,6 +55,16 @@ contract AscendHook is BaseHook {
     uint16 public constant SELL_FEE_BPS = 1500;
     uint16 public constant BPS_DENOM = 10_000;
 
+    /// @notice Mining premium expressed in basis points over the floor.
+    ///         Trading price = floor · (1 + MINING_PREMIUM_BPS / 10_000).
+    ///         At 10_000 (100%), miners pay double the floor. The premium
+    ///         half goes straight into the vault as additional backing,
+    ///         compounding the floor far faster than fees alone could.
+    ///         Redemption ignores the premium — sellers always exit at
+    ///         the floor (minus the redemption fee). This makes MC > vault
+    ///         by construction: market cap = (1 + premium) · vault.
+    uint16 public constant MINING_PREMIUM_BPS = 10_000;
+
     /// @notice Bootstrap. Constructor enforces these exactly.
     ///         The bootstrap ETH and the bootstrap ascend (locked at the hook
     ///         itself) anchor the initial floor at 0.001 ETH per ascend.
@@ -164,23 +174,41 @@ contract AscendHook is BaseHook {
         return address(this).balance;
     }
 
-    /// @notice Floor price, ETH per ascend, in 1e18 fixed point.
+    /// @notice Floor price (redemption value), ETH per ascend, in 1e18 fixed point.
+    ///         floor = vault / supply. The on-chain backing per token.
     function floor() public view returns (uint256) {
         uint256 supply = ascend.totalSupply();
         if (supply == 0) return 0;
         return (address(this).balance * 1e18) / supply;
     }
 
-    /// @notice Returns (ascendOut, fee) for a buy of `ethIn` wei.
+    /// @notice Trading price (mining cost), ETH per ascend, in 1e18 fixed point.
+    ///         price = floor · (1 + premium). What miners pay to mint.
+    function price() public view returns (uint256) {
+        uint256 f = floor();
+        return f + (f * MINING_PREMIUM_BPS) / BPS_DENOM;
+    }
+
+    /// @notice Market cap = price · supply, in wei.
+    ///         Strictly greater than the vault by the premium factor.
+    function marketCap() public view returns (uint256) {
+        uint256 supply = ascend.totalSupply();
+        return (price() * supply) / 1e18;
+    }
+
+    /// @notice Returns (ascendOut, fee) for a mining buy of `ethIn` wei.
     function quoteBuy(uint256 ethIn) external view returns (uint256 ascendOut, uint256 fee) {
         if (ethIn == 0) return (0, 0);
         fee = (ethIn * BUY_FEE_BPS) / BPS_DENOM;
         uint256 net = ethIn - fee;
-        // ascendOut = net * supply / reserve  (cancels the 1e18 in floor)
         uint256 supply = ascend.totalSupply();
         uint256 r = address(this).balance;
         if (r == 0 || supply == 0) return (0, 0);
-        ascendOut = (net * supply) / r;
+        // mint at price = floor · (1 + premium)
+        // ascendOut = net / price = net · supply / (reserve · (1 + premium))
+        // implemented as: net · supply · BPS / (reserve · (BPS + PREMIUM_BPS))
+        uint256 priceMultiplierBps = uint256(BPS_DENOM) + uint256(MINING_PREMIUM_BPS);
+        ascendOut = (net * supply * BPS_DENOM) / (r * priceMultiplierBps);
     }
 
     /// @notice Returns (ethOut, fee) for a sell of `ascendIn` ascend wei.
@@ -303,8 +331,14 @@ contract AscendHook is BaseHook {
         uint256 fee = (ethIn * BUY_FEE_BPS) / BPS_DENOM;
         uint256 net = ethIn - fee;
 
-        // ascendOut = net * S / R  (= net / floor, with the 1e18s cancelled).
-        uint256 ascendOut = (net * supplyBefore) / reserveBefore;
+        // Mint at trading_price = floor · (1 + premium).
+        // ascendOut = net / trading_price
+        //           = net · S / (R · (1 + premium))
+        // Implemented in basis points to avoid fractional math:
+        //   ascendOut = net · S · BPS_DENOM / (R · (BPS_DENOM + MINING_PREMIUM_BPS))
+        uint256 priceMultiplierBps = uint256(BPS_DENOM) + uint256(MINING_PREMIUM_BPS);
+        uint256 ascendOut = (net * supplyBefore * BPS_DENOM)
+            / (reserveBefore * priceMultiplierBps);
         if (ascendOut == 0) revert ZeroAmount();
 
         // 1) Pull the entire ETH input from the PoolManager into the hook.

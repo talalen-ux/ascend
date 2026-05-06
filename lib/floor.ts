@@ -1,15 +1,18 @@
 /**
- * Off-chain mirror of the engine math. Floor only goes up.
+ * Off-chain mirror of the engine math.
  *
- * floor      = reserve / supply
- * buy fee    = 1% of ETH in
- * sell fee   = 3% of ETH out (gross)
+ *   floor   = vault / supply                         (redemption price)
+ *   price   = floor · (1 + MINING_PREMIUM_BPS/BPS)   (trading price)
+ *   MC      = price · supply  =  (1 + premium) · vault
  *
- * Both fees stay in the contract permanently as additional backing.
+ *   mining fee     5%   retained in vault
+ *   redemption fee 15%  retained in vault
+ *   mining premium 100% trading_price = 2 · floor (the spread also lands in vault)
  */
 
-export const BUY_FEE_BPS = 500;   // 5% — mining fee, retained in vault
-export const SELL_FEE_BPS = 1500; // 15% — redemption fee, retained in vault
+export const BUY_FEE_BPS = 500;
+export const SELL_FEE_BPS = 1500;
+export const MINING_PREMIUM_BPS = 10_000; // 100% — price = 2 · floor
 export const BPS_DENOM = 10_000;
 export const BOOTSTRAP_ETH = 0.001;
 export const BOOTSTRAP_ASCEND = 1;
@@ -24,24 +27,42 @@ export function floorOf({ reserveEth, supply }: State): number {
   return reserveEth / supply;
 }
 
+/** Trading price, the cost to mine one ascend. */
+export function priceOf(state: State): number {
+  return floorOf(state) * (1 + MINING_PREMIUM_BPS / BPS_DENOM);
+}
+
+/** Market cap in ETH. = price × supply = (1 + premium) × vault. */
+export function marketCapOf(state: State): number {
+  return priceOf(state) * state.supply;
+}
+
 export function quoteBuy(state: State, ethIn: number) {
   if (ethIn <= 0) return null;
   const f = floorOf(state);
+  const tradingPrice = f * (1 + MINING_PREMIUM_BPS / BPS_DENOM);
   const fee = (ethIn * BUY_FEE_BPS) / BPS_DENOM;
   const net = ethIn - fee;
-  const ascendOut = net / f;
-  // simulate post-state
+  const ascendOut = net / tradingPrice;
   const post: State = {
     reserveEth: state.reserveEth + ethIn,
     supply: state.supply + ascendOut,
   };
-  return { ascendOut, fee, floorBefore: f, floorAfter: floorOf(post) };
+  return {
+    ascendOut,
+    fee,
+    floorBefore: f,
+    floorAfter: floorOf(post),
+    tradingPrice,
+    priceAfter: priceOf(post),
+  };
 }
 
 export function quoteSell(state: State, ascendIn: number) {
   if (ascendIn <= 0) return null;
   if (ascendIn >= state.supply) return null;
   const f = floorOf(state);
+  // Redemption ignores the premium — sellers exit at the floor minus fee.
   const gross = ascendIn * f;
   const fee = (gross * SELL_FEE_BPS) / BPS_DENOM;
   const ethOut = gross - fee;
@@ -49,13 +70,17 @@ export function quoteSell(state: State, ascendIn: number) {
     reserveEth: state.reserveEth - ethOut,
     supply: state.supply - ascendIn,
   };
-  return { ethOut, fee, floorBefore: f, floorAfter: floorOf(post) };
+  return {
+    ethOut,
+    fee,
+    floorBefore: f,
+    floorAfter: floorOf(post),
+    priceAfter: priceOf(post),
+  };
 }
 
 /**
- * Simulate `n` alternating trades of size `tradeEth` to project a floor
- * trajectory. Used by the dapp to render "what happens if there's
- * volume?" as an illustrative chart, not a price prediction.
+ * Simulate `n` alternating trades for the projection chart in the dapp.
  */
 export function simulateFloor(
   start: State,

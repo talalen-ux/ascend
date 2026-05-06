@@ -10,7 +10,16 @@ const fmtPrice = (n: number) =>
   n < 1e-4 ? n.toExponential(3) : fmt(n, 8);
 
 export function State() {
-  const { floorEth, reserveEth, supply, isDemo, isLoading } = useAscendState();
+  const {
+    floorEth,
+    priceEth,
+    marketCapEth,
+    premiumPct,
+    reserveEth,
+    supply,
+    isDemo,
+    isLoading,
+  } = useAscendState();
 
   return (
     <section className="mt-12">
@@ -33,13 +42,28 @@ export function State() {
         className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-edge bg-edge md:grid-cols-3"
       >
         <Cell
-          label="Floor"
-          value={`${fmtPrice(floorEth)} Ξ`}
-          hint="redemption price · ETH per ascend"
+          label="Price"
+          value={`${fmtPrice(priceEth)} Ξ`}
+          hint={`mining cost · ${premiumPct.toFixed(0)}% premium over floor`}
           emphasis
         />
-        <Cell label="Vault" value={`${fmt(reserveEth, 4)} Ξ`} hint="ETH backing every ascend" />
+        <Cell
+          label="Floor"
+          value={`${fmtPrice(floorEth)} Ξ`}
+          hint="redemption value · vault / supply"
+        />
+        <Cell
+          label="Market cap"
+          value={`${fmt(marketCapEth, 3)} Ξ`}
+          hint="price × issued"
+        />
+        <Cell label="Vault" value={`${fmt(reserveEth, 4)} Ξ`} hint="ETH backing the floor" />
         <Cell label="Issued" value={fmt(supply, 2)} hint="ascend mined into existence" />
+        <Cell
+          label="Premium"
+          value={`+${premiumPct.toFixed(0)}%`}
+          hint="paid by miners, kept by holders"
+        />
       </motion.div>
     </section>
   );

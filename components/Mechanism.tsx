@@ -9,14 +9,14 @@ const properties = [
       "ascend is a single contract on Ethereum. it was constructed at one block, with one initial state, and runs against the same rules every block since. there is no governance, no admin, no upgrade path, no migration.",
   },
   {
-    title: "Mined into existence by ETH",
+    title: "Mined at a premium",
     body:
-      "every wei of ETH paid in mints ascend at the current floor. 5% of the input stays in the vault as new backing for every existing holder. the ETH itself never leaves the vault except as redemption to a holder.",
+      "miners pay a 100% premium over the floor. half of every mining transaction is structural deepening — pure new backing that compounds the floor for every existing holder. mining is how the asset capitalises itself.",
   },
   {
     title: "Redemption is taxed",
     body:
-      "redemption pays 85% of the floor; the remaining 15% stays in the vault and compounds the floor for everyone who keeps holding. mining is cheap; selling pays the patient.",
+      "redemption pays 85% of the floor; the remaining 15% stays in the vault and compounds the floor for everyone who keeps holding. round-tripping costs north of 50% on a flat floor — the asset is built to be held, not flipped.",
   },
   {
     title: "Floor is the law",

@@ -18,7 +18,13 @@
  * Off-chain mirror of the on-chain math (same as lib/floor.ts).
  */
 
-import { quoteBuy, quoteSell, type State } from "../lib/floor";
+import {
+  quoteBuy,
+  quoteSell,
+  priceOf,
+  marketCapOf,
+  type State,
+} from "../lib/floor";
 
 const ETH_PRICE_USD = 2_350;
 const N_BUYS = 200;
@@ -28,16 +34,20 @@ const initial: State = { reserveEth: 1, supply: 1 };
 
 function snap(label: string, s: State) {
   const floor = s.reserveEth / s.supply;
-  const fdvUsd = floor * s.supply * ETH_PRICE_USD;
+  const price = priceOf(s);
+  const mcEth = marketCapOf(s);
+  const mcUsd = mcEth * ETH_PRICE_USD;
   const reserveUsd = s.reserveEth * ETH_PRICE_USD;
   return {
     label,
     floorEth: floor,
     floorUsd: floor * ETH_PRICE_USD,
+    priceEth: price,
+    priceUsd: price * ETH_PRICE_USD,
     supply: s.supply,
     reserveEth: s.reserveEth,
     reserveUsd,
-    fdvUsd,
+    mcUsd,
   };
 }
 
@@ -57,10 +67,11 @@ function fmtUsd(n: number) {
 function printSnap(s: ReturnType<typeof snap>) {
   console.log(
     `  ${s.label.padEnd(28)}  ` +
-      `floor=${fmt(s.floorEth, 8)} Ξ (${fmtUsd(s.floorUsd)})  ` +
-      `supply=${fmt(s.supply, 4)}  ` +
-      `reserve=${fmt(s.reserveEth, 4)} Ξ (${fmtUsd(s.reserveUsd)})  ` +
-      `FDV=${fmtUsd(s.fdvUsd)}`,
+      `price=${fmt(s.priceEth, 4)} Ξ (${fmtUsd(s.priceUsd)})  ` +
+      `floor=${fmt(s.floorEth, 4)} Ξ (${fmtUsd(s.floorUsd)})  ` +
+      `supply=${fmt(s.supply, 2)}  ` +
+      `vault=${fmt(s.reserveEth, 2)} Ξ (${fmtUsd(s.reserveUsd)})  ` +
+      `MC=${fmtUsd(s.mcUsd)}`,
   );
 }
 
@@ -143,6 +154,9 @@ console.log(`  initial floor      : ${initial.reserveEth / initial.supply} ETH/a
 console.log(
   `  fee rates          : 5% mining / 15% redemption (retained in vault)`,
 );
+console.log(
+  `  mining premium     : 100% over floor (price = 2 × floor; the spread also lands in vault)`,
+);
 console.log(`  trade granularity  : 200 buys + up to 200 sells\n`);
 
 sequential(500_000, 400_000);
@@ -167,10 +181,12 @@ for (const buyUsd of [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000]) {
     }
   }
   const floor = s.reserveEth / s.supply;
-  const fdv = floor * s.supply * ETH_PRICE_USD;
+  const price = priceOf(s);
+  const mc = marketCapOf(s) * ETH_PRICE_USD;
+  const vault = s.reserveEth * ETH_PRICE_USD;
   console.log(
     `  buys=${fmtUsd(buyUsd).padEnd(8)} sells=${fmtUsd(sellUsd).padEnd(8)} ` +
-      `→ floor=${fmt(floor, 6)} Ξ (${fmtUsd(floor * ETH_PRICE_USD)})  ` +
-      `FDV=${fmtUsd(fdv)}  reserve=${fmt(s.reserveEth, 2)} Ξ`,
+      `→ price=${fmt(price, 3)} Ξ (${fmtUsd(price * ETH_PRICE_USD)})  ` +
+      `floor=${fmt(floor, 3)} Ξ  MC=${fmtUsd(mc)}  vault=${fmtUsd(vault)}`,
   );
 }
