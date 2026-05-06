@@ -1,21 +1,21 @@
 /**
- * Estimate ascend's state after a fixed dollar-volume scenario.
+ * Estimate ascend's state under the dynamic-premium model.
  *
- *   initial reserve  : 1 ETH   (assumes a 1 ETH bootstrap, larger than the
- *                                contract's default 0.001 ETH; numbers scale
- *                                linearly with the bootstrap)
- *   initial supply   : 1 ascend
- *   initial floor    : 1 ETH per ascend
+ *   floor(t)        = vault(t) / supply(t)
+ *   premium_bps(t)  = BASE + cumulativeEthIn(t) · BPS / S
+ *   price(t)        = floor(t) · (1 + premium_bps/BPS)
+ *   marketCap(t)    = price(t) · supply(t)
  *
- *   total buys       : $500,000      (= 125 ETH at $4,000/ETH)
- *   total sells      : $400,000      (= 100 ETH equivalent, sized at the
- *                                       prevailing floor when each sell hits)
+ *   initial vault   : 1 ETH (assumed bootstrap; numbers scale linearly)
+ *   initial supply  : 1 ascend
+ *   initial floor   : 1 ETH / ascend
+ *   base premium    : 100%
+ *   premium scale   : 500 ETH
+ *   mining fee      : 5%   redemption fee : 15%   (retained in vault)
  *
  * Two scenarios:
  *   (A) sequential   : all buys land first, then all sells
  *   (B) interleaved  : buy/sell pairs in 5:4 USD ratio across the run
- *
- * Off-chain mirror of the on-chain math (same as lib/floor.ts).
  */
 
 import {
@@ -23,6 +23,7 @@ import {
   quoteSell,
   priceOf,
   marketCapOf,
+  premiumFractionOf,
   type State,
 } from "../lib/floor";
 
@@ -30,7 +31,7 @@ const ETH_PRICE_USD = 2_350;
 const N_BUYS = 200;
 const N_SELLS = 200;
 
-const initial: State = { reserveEth: 1, supply: 1 };
+const initial: State = { reserveEth: 1, supply: 1, cumulativeEthIn: 0 };
 
 function snap(label: string, s: State) {
   const floor = s.reserveEth / s.supply;
@@ -48,6 +49,8 @@ function snap(label: string, s: State) {
     reserveEth: s.reserveEth,
     reserveUsd,
     mcUsd,
+    premiumPct: premiumFractionOf(s) * 100,
+    cumulativeEth: s.cumulativeEthIn,
   };
 }
 
@@ -67,12 +70,29 @@ function fmtUsd(n: number) {
 function printSnap(s: ReturnType<typeof snap>) {
   console.log(
     `  ${s.label.padEnd(28)}  ` +
-      `price=${fmt(s.priceEth, 4)} Ξ (${fmtUsd(s.priceUsd)})  ` +
-      `floor=${fmt(s.floorEth, 4)} Ξ (${fmtUsd(s.floorUsd)})  ` +
+      `MC=${fmtUsd(s.mcUsd).padStart(8)}  ` +
+      `vault=${fmtUsd(s.reserveUsd).padStart(8)}  ` +
+      `prem=+${s.premiumPct.toFixed(0)}%  ` +
+      `price=${fmtUsd(s.priceUsd)}  floor=${fmtUsd(s.floorUsd)}  ` +
       `supply=${fmt(s.supply, 2)}  ` +
-      `vault=${fmt(s.reserveEth, 2)} Ξ (${fmtUsd(s.reserveUsd)})  ` +
-      `MC=${fmtUsd(s.mcUsd)}`,
+      `cumE=${fmt(s.cumulativeEth, 1)} Ξ`,
   );
+}
+
+function applyBuy(s: State, ethIn: number, q: NonNullable<ReturnType<typeof quoteBuy>>): State {
+  return {
+    reserveEth: s.reserveEth + ethIn,
+    supply: s.supply + q.ascendOut,
+    cumulativeEthIn: s.cumulativeEthIn + ethIn,
+  };
+}
+
+function applySell(s: State, ascendIn: number, q: NonNullable<ReturnType<typeof quoteSell>>): State {
+  return {
+    reserveEth: s.reserveEth - q.ethOut,
+    supply: s.supply - ascendIn,
+    cumulativeEthIn: s.cumulativeEthIn,
+  };
 }
 
 // ---------- (A) sequential ---------------------------------------------------
@@ -81,18 +101,17 @@ function sequential(buyUsd: number, sellUsd: number) {
   const buyEthTotal = buyUsd / ETH_PRICE_USD;
   const ethPerBuy = buyEthTotal / N_BUYS;
 
-  let s = { ...initial };
+  let s: State = { ...initial };
   console.log("\n=== A) sequential — all buys, then all sells ===");
   printSnap(snap("t0 (genesis)", s));
 
   for (let i = 0; i < N_BUYS; i++) {
     const q = quoteBuy(s, ethPerBuy);
     if (!q) break;
-    s = { reserveEth: s.reserveEth + ethPerBuy, supply: s.supply + q.ascendOut };
+    s = applyBuy(s, ethPerBuy, q);
   }
   printSnap(snap(`after $${buyUsd / 1000}k buys`, s));
 
-  // sell phase: target a fixed USD volume out, sized at the prevailing floor
   let usdSold = 0;
   let trades = 0;
   while (usdSold < sellUsd && trades < N_SELLS) {
@@ -104,7 +123,7 @@ function sequential(buyUsd: number, sellUsd: number) {
     if (ascendIn >= s.supply) ascendIn = s.supply * 0.99;
     const q = quoteSell(s, ascendIn);
     if (!q) break;
-    s = { reserveEth: s.reserveEth - q.ethOut, supply: s.supply - ascendIn };
+    s = applySell(s, ascendIn, q);
     usdSold += q.ethOut * ETH_PRICE_USD;
     trades++;
   }
@@ -121,17 +140,15 @@ function interleaved(buyUsd: number, sellUsd: number) {
   const ethPerBuy = buyEthTotal / N_BUYS;
   const sellRatio = sellUsd / buyUsd;
 
-  let s = { ...initial };
+  let s: State = { ...initial };
   console.log("\n=== B) interleaved — alternating buy/sell at 5:4 USD ratio ===");
   printSnap(snap("t0 (genesis)", s));
 
   for (let i = 0; i < N_BUYS; i++) {
-    // buy
     const qb = quoteBuy(s, ethPerBuy);
     if (!qb) break;
-    s = { reserveEth: s.reserveEth + ethPerBuy, supply: s.supply + qb.ascendOut };
+    s = applyBuy(s, ethPerBuy, qb);
 
-    // matching sell sized at current floor
     const sellUsdNow = ethPerBuy * ETH_PRICE_USD * sellRatio;
     const sellEthNow = sellUsdNow / ETH_PRICE_USD;
     const floorNow = s.reserveEth / s.supply;
@@ -139,7 +156,7 @@ function interleaved(buyUsd: number, sellUsd: number) {
     if (ascendIn <= 0 || ascendIn >= s.supply) continue;
     const qs = quoteSell(s, ascendIn);
     if (!qs) continue;
-    s = { reserveEth: s.reserveEth - qs.ethOut, supply: s.supply - ascendIn };
+    s = applySell(s, ascendIn, qs);
   }
   printSnap(snap("after interleaved volume", s));
 }
@@ -148,45 +165,40 @@ function interleaved(buyUsd: number, sellUsd: number) {
 
 console.log(`Assumptions:`);
 console.log(`  ETH price          : $${ETH_PRICE_USD.toLocaleString()}`);
-console.log(`  initial reserve    : ${initial.reserveEth} ETH`);
+console.log(`  initial vault      : ${initial.reserveEth} ETH`);
 console.log(`  initial supply     : ${initial.supply} ascend`);
 console.log(`  initial floor      : ${initial.reserveEth / initial.supply} ETH/ascend`);
-console.log(
-  `  fee rates          : 5% mining / 15% redemption (retained in vault)`,
-);
-console.log(
-  `  mining premium     : 100% over floor (price = 2 × floor; the spread also lands in vault)`,
-);
+console.log(`  fee rates          : 5% mining / 15% redemption (retained in vault)`);
+console.log(`  base premium       : 100% (price = 2 × floor at genesis)`);
+console.log(`  premium scale      : +100% per 500 ETH of cumulative mining`);
 console.log(`  trade granularity  : 200 buys + up to 200 sells\n`);
 
 sequential(500_000, 400_000);
 interleaved(500_000, 400_000);
 
-// floor-lift summary at $1M / $5M / $10M cumulative volume (interleaved)
-console.log(`\n=== floor-lift sensitivity (interleaved, 5:4 buy/sell ratio) ===`);
-for (const buyUsd of [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000]) {
+console.log(`\n=== MC scaling vs cumulative mining (interleaved 5:4) ===`);
+for (const buyUsd of [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000, 50_000_000]) {
   const sellUsd = (buyUsd * 4) / 5;
-  let s = { ...initial };
+  let s: State = { ...initial };
   const ethPerBuy = buyUsd / ETH_PRICE_USD / N_BUYS;
   const sellRatio = sellUsd / buyUsd;
   for (let i = 0; i < N_BUYS; i++) {
     const qb = quoteBuy(s, ethPerBuy);
-    if (qb) s = { reserveEth: s.reserveEth + ethPerBuy, supply: s.supply + qb.ascendOut };
+    if (qb) s = applyBuy(s, ethPerBuy, qb);
     const sellEthNow = ethPerBuy * sellRatio;
     const floorNow = s.reserveEth / s.supply;
     const ascendIn = sellEthNow / floorNow;
     if (ascendIn > 0 && ascendIn < s.supply) {
       const qs = quoteSell(s, ascendIn);
-      if (qs) s = { reserveEth: s.reserveEth - qs.ethOut, supply: s.supply - ascendIn };
+      if (qs) s = applySell(s, ascendIn, qs);
     }
   }
-  const floor = s.reserveEth / s.supply;
-  const price = priceOf(s);
   const mc = marketCapOf(s) * ETH_PRICE_USD;
   const vault = s.reserveEth * ETH_PRICE_USD;
+  const prem = premiumFractionOf(s) * 100;
   console.log(
-    `  buys=${fmtUsd(buyUsd).padEnd(8)} sells=${fmtUsd(sellUsd).padEnd(8)} ` +
-      `→ price=${fmt(price, 3)} Ξ (${fmtUsd(price * ETH_PRICE_USD)})  ` +
-      `floor=${fmt(floor, 3)} Ξ  MC=${fmtUsd(mc)}  vault=${fmtUsd(vault)}`,
+    `  mine=${fmtUsd(buyUsd).padEnd(8)} redeem=${fmtUsd(sellUsd).padEnd(8)} ` +
+      `→ MC=${fmtUsd(mc).padStart(8)}  vault=${fmtUsd(vault).padStart(8)}  ` +
+      `premium=+${prem.toFixed(0)}%  cumE=${fmt(s.cumulativeEthIn, 0)} Ξ`,
   );
 }

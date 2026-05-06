@@ -27,15 +27,17 @@ export default function Whitepaper() {
         <p>
           ascend is an erc-20 issued from a single uniswap v4 hook on
           ethereum. the hook is the only minter, the only burner, and the
-          only source of liquidity. mining mints ascend at a{" "}
-          <code>2 × floor</code> trading price (100% premium) with a 5%
-          retention fee; redemption burns ascend at the floor with a 15%
-          retention fee. all three flows — premium, mining fee, redemption
-          fee — stay in the vault permanently and deepen the backing for
-          every remaining holder. market cap = price · supply ={" "}
-          <code>2 · vault</code> by construction, strictly greater than the
-          on-chain backing. there is no admin, no upgrade, no migration,
-          no withdraw.
+          only source of liquidity. the trading price is{" "}
+          <code>floor · (1 + premium)</code>, where the premium ratchets up
+          deterministically with all-time mining inflow:{" "}
+          <code>premium = 100% + cumulativeEthIn / 500 ETH × 100%</code>.
+          mining retains 5% of input and redemption retains 15% of gross —
+          both flows, plus the premium itself, stay in the vault permanently
+          and deepen the backing for every remaining holder. floor and
+          premium are both monotone non-decreasing forever. market cap =
+          price · supply = <code>(1 + premium) · vault</code> compounds
+          super-linearly with cumulative volume. there is no admin, no
+          upgrade, no migration, no withdraw.
         </p>
         <p>
           the floor is defined as{" "}

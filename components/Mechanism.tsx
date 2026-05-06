@@ -9,9 +9,9 @@ const properties = [
       "ascend is a single contract on Ethereum. it was constructed at one block, with one initial state, and runs against the same rules every block since. there is no governance, no admin, no upgrade path, no migration.",
   },
   {
-    title: "Mined at a premium",
+    title: "Premium ratchets with volume",
     body:
-      "miners pay a 100% premium over the floor. half of every mining transaction is structural deepening — pure new backing that compounds the floor for every existing holder. mining is how the asset capitalises itself.",
+      "miners pay a premium over the floor — starting at 100% (price = 2 × floor) and climbing 100 percentage points for every 500 ETH of cumulative mining. the premium never resets. early miners benefit; late miners capitalise the asset for everyone.",
   },
   {
     title: "Redemption is taxed",

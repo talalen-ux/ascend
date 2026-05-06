@@ -242,20 +242,46 @@ contract AscendHookTest is Test, Deployers {
         assertEq(ascend.balanceOf(alice), got);
     }
 
-    function test_priceIsTwiceFloor() public view {
-        // 100% mining premium → price = 2 × floor
-        assertEq(hook.price(), 2 * hook.floor(), "price != 2 × floor");
+    function test_priceIsTwiceFloorAtGenesis() public view {
+        // BASE_PREMIUM_BPS = 100% and cumulativeEthIn = 0 at genesis → price = 2 × floor
+        assertEq(hook.price(), 2 * hook.floor(), "price != 2 × floor at genesis");
+        assertEq(hook.cumulativeEthIn(), 0);
+        assertEq(hook.premiumBps(), 10_000);
     }
 
-    function test_marketCapIsTwoVaults() public {
-        // marketCap = price · supply = 2 · floor · supply = 2 · vault
+    function test_premiumRatchetsUpOnMine() public {
+        uint256 p0 = hook.premiumBps();
         vm.prank(alice);
         router.buy{value: 1 ether}(0, alice);
-        uint256 expected = 2 * address(hook).balance;
-        // marketCap is in wei terms (price/1e18 * supply). After both rebases:
-        // marketCap returns price·supply/1e18 wei.
-        uint256 mc = hook.marketCap();
-        assertApproxEqRel(mc, expected, 1e15); // within 0.1%
+        uint256 p1 = hook.premiumBps();
+        // BASE 10_000 + 1e18 wei * 10_000 / 500e18 = 10_000 + 20 = 10_020
+        assertEq(p1, p0 + 20, "premium did not ratchet");
+        assertEq(hook.cumulativeEthIn(), 1 ether);
+    }
+
+    function test_premiumDoesNotResetOnRedeem() public {
+        vm.prank(alice);
+        router.buy{value: 1 ether}(0, alice);
+        uint256 cumBefore = hook.cumulativeEthIn();
+        uint256 premBefore = hook.premiumBps();
+
+        uint256 ascBal = ascend.balanceOf(alice);
+        vm.startPrank(alice);
+        ascend.approve(address(router), ascBal);
+        router.sell(ascBal, 0, alice);
+        vm.stopPrank();
+
+        assertEq(hook.cumulativeEthIn(), cumBefore, "redemption decreased cumE");
+        assertEq(hook.premiumBps(), premBefore, "premium decreased on redemption");
+    }
+
+    function test_marketCapTracksPremiumVault() public {
+        vm.prank(alice);
+        router.buy{value: 5 ether}(0, alice);
+        // marketCap = price · supply / 1e18 = (1 + premium/BPS) · vault
+        uint256 expected = address(hook).balance
+            * (10_000 + hook.premiumBps()) / 10_000;
+        assertApproxEqRel(hook.marketCap(), expected, 1e15);
     }
 
     function test_redemptionFeeIsFifteenPercent() public {

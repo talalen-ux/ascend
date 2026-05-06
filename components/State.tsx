@@ -62,7 +62,7 @@ export function State() {
         <Cell
           label="Premium"
           value={`+${premiumPct.toFixed(0)}%`}
-          hint="paid by miners, kept by holders"
+          hint="ratchets up with every mine — never resets"
         />
       </motion.div>
     </section>

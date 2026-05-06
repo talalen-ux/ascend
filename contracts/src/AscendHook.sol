@@ -32,10 +32,13 @@ import {Ascend} from "./Ascend.sol";
 ///           beforeSwapReturnsDelta   (replace AMM output with our own)
 ///
 ///         Mathematical invariants (proved in the whitepaper):
-///           floor(t)  := reserve(t) / supply(t)        ETH per ascend
-///           BUY  e wei → floor lifts by (R+e)/(R+0.95·e) > 1
-///           SELL r wei → floor lifts by (S−0.85·r)/(S−r) > 1
-///           solvency: reserve ≥ floor · (supply − supply_locked) always
+///           floor(t)         := reserve(t) / supply(t)
+///           premium_bps(t)   := BASE + cumulativeEthIn(t) · BPS / S
+///           price(t)         := floor(t) · (1 + premium_bps(t)/BPS)
+///           marketCap(t)     := price(t) · supply(t)  =  (1 + premium) · vault
+///         Floor and premium are both monotone non-decreasing under any
+///         finite sequence of mines and redemptions.
+///         Solvency: reserve ≥ floor · (supply − supply_locked) at all times.
 contract AscendHook is BaseHook {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -55,15 +58,33 @@ contract AscendHook is BaseHook {
     uint16 public constant SELL_FEE_BPS = 1500;
     uint16 public constant BPS_DENOM = 10_000;
 
-    /// @notice Mining premium expressed in basis points over the floor.
-    ///         Trading price = floor · (1 + MINING_PREMIUM_BPS / 10_000).
-    ///         At 10_000 (100%), miners pay double the floor. The premium
-    ///         half goes straight into the vault as additional backing,
-    ///         compounding the floor far faster than fees alone could.
-    ///         Redemption ignores the premium — sellers always exit at
-    ///         the floor (minus the redemption fee). This makes MC > vault
-    ///         by construction: market cap = (1 + premium) · vault.
-    uint16 public constant MINING_PREMIUM_BPS = 10_000;
+    /// @notice Mining premium. At every block:
+    ///
+    ///           premiumBps = BASE_PREMIUM_BPS + (cumulativeEthIn · BPS / S)
+    ///           tradingPrice = floor · (1 + premiumBps / BPS)
+    ///           marketCap    = tradingPrice · supply = (1 + premium) · vault
+    ///
+    ///         BASE_PREMIUM_BPS sets the day-zero premium (10_000 = 100%, so
+    ///         price = 2 · floor at genesis). The dynamic component ratchets
+    ///         up with `cumulativeEthIn` — the all-time mining inflow. Every
+    ///         dollar of mining permanently lifts the premium for every
+    ///         subsequent miner. Sells do NOT reduce cumulativeEthIn, so the
+    ///         premium is monotone non-decreasing forever.
+    ///
+    ///         PREMIUM_SCALE_WEI is the half-life: the premium gains
+    ///         BASE_PREMIUM_BPS per PREMIUM_SCALE_WEI of cumulative mining.
+    ///         At S = 500 ETH and base = 100%:
+    ///           cumE =   0  ETH → premium = 100% → price = 2.0 · floor
+    ///           cumE = 500  ETH → premium = 200% → price = 3.0 · floor
+    ///           cumE = 1k   ETH → premium = 300% → price = 4.0 · floor
+    ///           cumE = 10k  ETH → premium = 2100% → price = 22 · floor
+    ///
+    ///         Redemption ignores the premium: sellers always exit at the
+    ///         floor (minus the 15% redemption fee). The premium is the
+    ///         "second floor" that markets capitalize separately from the
+    ///         redemption guarantee.
+    uint16 public constant BASE_PREMIUM_BPS = 10_000;
+    uint256 public constant PREMIUM_SCALE_WEI = 500 ether;
 
     /// @notice Bootstrap. Constructor enforces these exactly.
     ///         The bootstrap ETH and the bootstrap ascend (locked at the hook
@@ -81,6 +102,11 @@ contract AscendHook is BaseHook {
 
     PoolId public poolId;
     bool public isInitialized;
+
+    /// @notice All-time cumulative ETH paid into mining. Monotonically
+    ///         non-decreasing — incremented by every successful buy and
+    ///         never reduced. Drives the dynamic premium upward forever.
+    uint256 public cumulativeEthIn;
 
     // -----------------------------------------------------------------
     // transient reentrancy guard (EIP-1153)
@@ -182,21 +208,34 @@ contract AscendHook is BaseHook {
         return (address(this).balance * 1e18) / supply;
     }
 
+    /// @notice Current premium expressed in basis points.
+    ///         premium_bps = BASE_PREMIUM_BPS + cumulativeEthIn · BPS / S
+    ///         At genesis = BASE (10_000 = 100%). Grows by BASE per S of
+    ///         cumulative mining. Monotone non-decreasing forever.
+    function premiumBps() public view returns (uint256) {
+        return uint256(BASE_PREMIUM_BPS)
+            + (cumulativeEthIn * uint256(BPS_DENOM)) / PREMIUM_SCALE_WEI;
+    }
+
     /// @notice Trading price (mining cost), ETH per ascend, in 1e18 fixed point.
-    ///         price = floor · (1 + premium). What miners pay to mint.
+    ///         price = floor · (1 + premium_bps / BPS).
     function price() public view returns (uint256) {
         uint256 f = floor();
-        return f + (f * MINING_PREMIUM_BPS) / BPS_DENOM;
+        uint256 pBps = premiumBps();
+        return f + (f * pBps) / uint256(BPS_DENOM);
     }
 
     /// @notice Market cap = price · supply, in wei.
-    ///         Strictly greater than the vault by the premium factor.
+    ///         marketCap = (1 + premium) · vault. Strictly greater than the
+    ///         vault by the dynamic premium factor.
     function marketCap() public view returns (uint256) {
         uint256 supply = ascend.totalSupply();
         return (price() * supply) / 1e18;
     }
 
     /// @notice Returns (ascendOut, fee) for a mining buy of `ethIn` wei.
+    ///         Quotes at the CURRENT premium — the buyer's own contribution
+    ///         to cumulativeEthIn lifts the premium for the next miner.
     function quoteBuy(uint256 ethIn) external view returns (uint256 ascendOut, uint256 fee) {
         if (ethIn == 0) return (0, 0);
         fee = (ethIn * BUY_FEE_BPS) / BPS_DENOM;
@@ -204,11 +243,13 @@ contract AscendHook is BaseHook {
         uint256 supply = ascend.totalSupply();
         uint256 r = address(this).balance;
         if (r == 0 || supply == 0) return (0, 0);
-        // mint at price = floor · (1 + premium)
-        // ascendOut = net / price = net · supply / (reserve · (1 + premium))
-        // implemented as: net · supply · BPS / (reserve · (BPS + PREMIUM_BPS))
-        uint256 priceMultiplierBps = uint256(BPS_DENOM) + uint256(MINING_PREMIUM_BPS);
-        ascendOut = (net * supply * BPS_DENOM) / (r * priceMultiplierBps);
+        // ascendOut = net / (floor · (1 + premium))
+        //           = net · S / (R · (1 + premium))
+        // Implemented in BPS to avoid fractional math:
+        //   priceMultiplier_bps = BPS + premiumBps()
+        //   ascendOut = net · S · BPS / (R · priceMultiplier_bps)
+        uint256 priceMultiplierBps = uint256(BPS_DENOM) + premiumBps();
+        ascendOut = (net * supply * uint256(BPS_DENOM)) / (r * priceMultiplierBps);
     }
 
     /// @notice Returns (ethOut, fee) for a sell of `ascendIn` ascend wei.
@@ -331,15 +372,17 @@ contract AscendHook is BaseHook {
         uint256 fee = (ethIn * BUY_FEE_BPS) / BPS_DENOM;
         uint256 net = ethIn - fee;
 
-        // Mint at trading_price = floor · (1 + premium).
-        // ascendOut = net / trading_price
-        //           = net · S / (R · (1 + premium))
-        // Implemented in basis points to avoid fractional math:
-        //   ascendOut = net · S · BPS_DENOM / (R · (BPS_DENOM + MINING_PREMIUM_BPS))
-        uint256 priceMultiplierBps = uint256(BPS_DENOM) + uint256(MINING_PREMIUM_BPS);
-        uint256 ascendOut = (net * supplyBefore * BPS_DENOM)
+        // Snapshot the premium at the pre-trade cumulativeEthIn — the buyer
+        // transacts at the price the curve presented when they signed. Their
+        // own contribution lifts the premium for the next miner.
+        uint256 priceMultiplierBps = uint256(BPS_DENOM) + premiumBps();
+        uint256 ascendOut = (net * supplyBefore * uint256(BPS_DENOM))
             / (reserveBefore * priceMultiplierBps);
         if (ascendOut == 0) revert ZeroAmount();
+
+        // Ratchet cumulative inflow upward. This persists across sells —
+        // redemption never reduces it. The premium is monotone non-decreasing.
+        cumulativeEthIn += ethIn;
 
         // 1) Pull the entire ETH input from the PoolManager into the hook.
         poolManager.take(key.currency0, address(this), ethIn);

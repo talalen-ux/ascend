@@ -3,6 +3,8 @@ export const ASCEND_HOOK_ABI = [
   { type: "function", name: "floor", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "price", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "marketCap", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "premiumBps", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "cumulativeEthIn", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "reserve", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   {
     type: "function",
