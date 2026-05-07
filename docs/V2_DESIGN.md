@@ -266,24 +266,27 @@ the hook routes on every swap.
 
 ### multiplier distribution
 
-The 4-bit nibble drawn from the random word maps to multiplier with
-weights tuned so the expected payout per tile equals exactly
-`epoch_pool / 144`:
+A 4-bit nibble is drawn from the random word and mapped to a
+multiplier. The split is chosen so contract code is trivial (one
+keccak, one mask, three compares) at the cost of slight quantization
+vs. round percentages:
 
-| multiplier | weight | nibble range  |
-|-----------:|-------:|---------------|
-|         1× |   60%  | `0x0..0x9`    |
-|         2× |   25%  | `0xA..0xC`    |
-|         3× |   12%  | `0xD..0xE`    |
-|         4× |    3%  | `0xF`         |
+| multiplier | nibbles      | weight    |
+|-----------:|--------------|-----------|
+|         1× | `0x0..0x9`   | 10/16 = 62.5%   |
+|         2× | `0xA..0xC`   | 3/16  = 18.75%  |
+|         3× | `0xD..0xE`   | 2/16  = 12.5%   |
+|         4× | `0xF`        | 1/16  = 6.25%   |
 
 Expected value:
 ```
-E[m] = 0.60·1 + 0.25·2 + 0.12·3 + 0.03·4 = 0.60 + 0.50 + 0.36 + 0.12 = 1.58
+E[m] = (10·1 + 3·2 + 2·3 + 1·4) / 16 = 26/16 = 1.625
 ```
 
-**With expected multiplier of 1.58×, base reward per tile must be
-`epoch_pool / (144 × 1.58)` to keep the pool solvent in expectation.**
+**With expected multiplier of 1.625×, base reward per tile is
+`epoch_pool / (144 × 1.625)` to keep the pool solvent in expectation.**
+The contract's `EXPECTED_MULTIPLIER_SCALED = 1_625_000` constant
+encodes this in 1e6 fixed-point.
 We additionally enforce a hard cap at the contract level: if total
 paid out approaches `epoch_pool`, late claimers receive at most their
 proportional share. The contract never pays out more than it holds.
@@ -308,12 +311,12 @@ uint8 multiplier = nibble < 0xA ? 1
 This is **proposer-influenceable but bounded**: a malicious validator
 can choose to include or delay a tile-claim transaction to pick a
 favorable `prevrandao`. Worst case, a validator captures 4× instead
-of 1.58× expected — a 2.5× edge per claim, capped at one claim per
+of 1.625× expected — a 2.46× edge per claim, capped at one claim per
 epoch per address. Total economic risk is bounded by:
 
 ```
-maxEdge = (4 - 1.58) × tileShare ≈ 2.42 × (epoch_pool / 144 / 1.58)
-       ≈ 1.06% of epoch pool per validator-controlled claim
+maxEdge = (4 - 1.625) × tileShare ≈ 2.375 × (epoch_pool / 144 / 1.625)
+       ≈ 1.01% of epoch pool per validator-controlled claim
 ```
 
 For the threat model (gamification, not high-value DeFi), this is
@@ -428,7 +431,7 @@ Unclaimed reward share doesn't disappear; it boosts the next epoch.
 
 #### TI-5. Bounded validator edge
 Worst-case validator manipulation per claim is bounded by
-`(4 − 1.58) × (epoch_pool / 144 / 1.58) ≈ 0.011 × epoch_pool`.
+`(4 − 1.625) × (epoch_pool / 144 / 1.625) ≈ 0.0101 × epoch_pool`.
 
 ## reentrancy model
 
@@ -506,7 +509,7 @@ $150k     into the tile pool
 ```
 
 Per epoch (24h), tile pool of $150k → 144 tiles → expected
-$150k / 144 / 1.58 = $658 base reward → $658 to $2,632 per claim.
+$150k / 144 / 1.625 = $641 base reward → $641 to $2,564 per claim.
 
 At $1M / 24h volume (more modest):
 ```
@@ -514,7 +517,7 @@ $50k      fees per day
 $40k      LP depth
 $10k      tile pool
 ```
-Tile rewards: $44 to $176 per claim.
+Tile rewards: $43 to $171 per claim.
 
 Tile rewards are a meaningful incentive for holders without being
 large enough to dominate token economics.

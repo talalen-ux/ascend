@@ -138,7 +138,7 @@ verify:
 **Severity:** HIGH because incorrect assumption invalidates fee math.
 **Status:** open. Blocking.
 
-### H-3 — TileEngine multiplier weights don't match the spec EV
+### ~~H-3~~ — TileEngine multiplier weights don't match the spec EV — **FIXED**
 
 **file:** `contracts/src/TileEngine.sol`
 **function:** `_drawMultiplier` + `EXPECTED_MULTIPLIER_SCALED`
@@ -193,8 +193,11 @@ the spec implies.
    compromise.
 
 **Severity:** HIGH because contract behavior diverges from documented
-spec, even if economically bounded. **Status:** open. Recommend fix
-before mainnet.
+spec, even if economically bounded.
+
+**Resolution:** Fixed by updating `EXPECTED_MULTIPLIER_SCALED` from
+`1_580_000` to `1_625_000` (option 1). Spec rewritten to document the
+actual 4-bit weights. Contract and spec now agree on E[m] = 1.625.
 
 ---
 
@@ -470,7 +473,7 @@ prevent accidental deploy.
 - [ ] **H-1** — atomic Genesis deploy script
 - [ ] **H-2** — `forge test` against real PoolManager; verify dynamic
       fee routes to hook correctly
-- [ ] **H-3** — fix `EXPECTED_MULTIPLIER_SCALED` ↔ weight-table mismatch
+- [x] **H-3** — `EXPECTED_MULTIPLIER_SCALED` set to 1_625_000 to match weight table
 - [ ] **M-1** — verify `_beforeAddLiquidity` sender semantics
 - [ ] **M-5** — buffer tile-pool deposits to amortize gas
 

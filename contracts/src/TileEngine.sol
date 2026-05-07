@@ -58,10 +58,23 @@ contract TileEngine {
     ///         constructor; epochs are deterministic from here.
     uint64 public immutable genesisTime;
 
-    /// @notice Multiplier-distribution scaler in 1e6 fixed-point.
-    ///         E[m] = 0.60·1 + 0.25·2 + 0.12·3 + 0.03·4 = 1.58
-    ///         baseReward = pool / GRID_SIZE / EXPECTED_MULTIPLIER_SCALED · 1e6
-    uint256 public constant EXPECTED_MULTIPLIER_SCALED = 1_580_000;
+    /// @notice Multiplier-distribution scaler in 1e6 fixed-point. Must
+    ///         track the actual draw weights in `_drawMultiplier`. The
+    ///         current 4-bit nibble split (0..9 / A..C / D..E / F)
+    ///         produces:
+    ///
+    ///           1× : 10/16 = 62.5%
+    ///           2× :  3/16 = 18.75%
+    ///           3× :  2/16 = 12.5%
+    ///           4× :  1/16 = 6.25%
+    ///
+    ///         E[m] = (10·1 + 3·2 + 2·3 + 1·4) / 16 = 26/16 = 1.625
+    ///
+    ///         If the weight table in `_drawMultiplier` changes, this
+    ///         constant MUST be updated in lock-step or the protocol
+    ///         will over- or under-pay relative to the pool's solvency
+    ///         expectation.
+    uint256 public constant EXPECTED_MULTIPLIER_SCALED = 1_625_000;
 
     // -----------------------------------------------------------------
     // state
