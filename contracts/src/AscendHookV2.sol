@@ -7,10 +7,12 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {SafeCast} from "v4-core/libraries/SafeCast.sol";
+import {LiquidityAmounts} from "v4-periphery/libraries/LiquidityAmounts.sol";
 
 import {Ascend} from "./Ascend.sol";
 import {TileEngine} from "./TileEngine.sol";
@@ -96,6 +98,7 @@ contract AscendHookV2 is BaseHook {
     // -----------------------------------------------------------------
 
     PoolId public poolId;
+    PoolKey public poolKey;       // stored for the rebalance routine
     bool public isInitialized;
     int24 public tickLower;       // = TickMath.minUsableTick(TICK_SPACING)
     int24 public tickUpper;       // = TickMath.maxUsableTick(TICK_SPACING)
@@ -150,6 +153,20 @@ contract AscendHookV2 is BaseHook {
     error UnsolicitedETH();
     error Reentrancy();
     error NotImplemented();
+    error UnknownCallback();
+    error CallerNotPoolManager();
+    error UnexpectedDelta();
+
+    // -----------------------------------------------------------------
+    // unlock callback dispatch
+    // -----------------------------------------------------------------
+
+    /// @dev Tags the kind of work to do inside the unlock callback. ABI
+    ///      encoded as the first field of `unlockCallback(data)`.
+    enum CallbackKind {
+        GENESIS,    // seed the initial full-range LP
+        REBALANCE   // collect fees, split, re-LP at higher floor
+    }
 
     // -----------------------------------------------------------------
     // constructor — deploy token, mint cap to self, lock bootstrap
@@ -224,7 +241,7 @@ contract AscendHookV2 is BaseHook {
     function _afterInitialize(
         address,
         PoolKey calldata key,
-        uint160,
+        uint160 sqrtPriceX96,
         int24
     ) internal override returns (bytes4) {
         if (isInitialized) revert AlreadyInitialized();
@@ -233,21 +250,25 @@ contract AscendHookV2 is BaseHook {
         if (!key.currency0.isAddressZero()) revert WrongCurrencyZero();
         // currency1 must be the ascend token
         if (Currency.unwrap(key.currency1) != address(ascend)) revert WrongCurrencyOne();
-        // pool must declare zero swap fee — the hook charges its own fee
-        // via the dynamic-fee override flag in beforeSwap.
+        // pool fee MUST be the V4 dynamic-fee sentinel — the hook
+        // charges its own fee via OVERRIDE_FEE_FLAG in beforeSwap.
         if (key.fee != LPFeeLibrary.DYNAMIC_FEE_FLAG || key.tickSpacing == 0) {
             revert WrongFeeOrTickSpacing();
         }
 
         poolId = key.toId();
+        poolKey = key;
         tickLower = TickMath.minUsableTick(key.tickSpacing);
         tickUpper = TickMath.maxUsableTick(key.tickSpacing);
         isInitialized = true;
         emit PoolBound(poolId);
 
-        // TODO (slice 5): seed the genesis LP position here.
-        //   poolManager.unlock(abi.encode(GenesisDeposit{amount0: BOOTSTRAP_ETH, amount1: SUPPLY_CAP}))
-        //   inside unlockCallback: mint the position via modifyLiquidity.
+        // Seed the full-range LP atomically with initialization. We
+        // re-enter PoolManager via `unlock` and add liquidity inside
+        // the unlock callback. This closes the H-1 race window: the
+        // pool cannot be observed in an "initialized but unfunded"
+        // state by any external party.
+        poolManager.unlock(abi.encode(CallbackKind.GENESIS, sqrtPriceX96));
 
         return BaseHook.afterInitialize.selector;
     }
@@ -361,15 +382,93 @@ contract AscendHookV2 is BaseHook {
 
     // -----------------------------------------------------------------
     // unlockCallback — entered by PoolManager during seeding & rebalance
-    //                   (slice 5 + slice 6 work)
     // -----------------------------------------------------------------
 
-    function unlockCallback(bytes calldata /*data*/ ) external view returns (bytes memory) {
-        if (msg.sender != address(poolManager)) revert NotInitialized(); // wrong caller
-        revert NotImplemented();
-        // Branch on data type:
-        //   GenesisDeposit  → mint position with BOOTSTRAP_ETH + SUPPLY_CAP
-        //   RebalanceCycle  → withdraw, top up ETH side, redeposit
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(poolManager)) revert CallerNotPoolManager();
+
+        CallbackKind kind = abi.decode(data, (CallbackKind));
+        if (kind == CallbackKind.GENESIS) {
+            (, uint160 sqrtPriceX96) = abi.decode(data, (CallbackKind, uint160));
+            _seedGenesis(sqrtPriceX96);
+        } else if (kind == CallbackKind.REBALANCE) {
+            // Slice 6: collect fees + redeposit
+            revert NotImplemented();
+        } else {
+            revert UnknownCallback();
+        }
+        return "";
+    }
+
+    // -----------------------------------------------------------------
+    // genesis seed — called once, from afterInitialize via unlockCallback
+    // -----------------------------------------------------------------
+    //
+    // Adds the entire 122M ascend supply paired against the 1 ETH
+    // bootstrap as a full-range LP position. The hook is the sole LP.
+    //
+    // Math: liquidity for full range with `BOOTSTRAP_ETH` ETH and
+    // `SUPPLY_CAP` ascend at the deployer-provided sqrtPrice:
+    //
+    //     L = LiquidityAmounts.getLiquidityForAmounts(
+    //             sqrtP_current,
+    //             sqrtP_min,    // at MIN_TICK
+    //             sqrtP_max,    // at MAX_TICK
+    //             BOOTSTRAP_ETH,
+    //             SUPPLY_CAP
+    //         )
+    //
+    // The deployer is responsible for setting sqrtPriceX96 such that
+    // BOOTSTRAP_ETH/SUPPLY_CAP exactly fits the pool ratio at the
+    // chosen price. If the price is mismatched, modifyLiquidity will
+    // either revert (insufficient assets) or leave dust on the hook.
+    // -----------------------------------------------------------------
+
+    function _seedGenesis(uint160 sqrtPriceX96) private {
+        uint160 sqrtPriceLowerX96 = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtPriceUpperX96 = TickMath.getSqrtPriceAtTick(tickUpper);
+
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            BOOTSTRAP_ETH,
+            SUPPLY_CAP
+        );
+
+        BalanceDelta delta = poolManager.modifyLiquidity(
+            poolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: int256(uint256(liquidity)),
+                salt: bytes32(0)
+            }),
+            ""
+        );
+
+        // For positive liquidityDelta (adding), both deltas are negative
+        // (we owe PoolManager). Convert to absolute amounts to settle.
+        int128 a0 = delta.amount0();
+        int128 a1 = delta.amount1();
+        if (a0 > 0 || a1 > 0) revert UnexpectedDelta();
+
+        uint256 owedEth = uint256(int256(-a0));
+        uint256 owedAscend = uint256(int256(-a1));
+
+        // Settle currency0 (native ETH).
+        if (owedEth > 0) {
+            poolManager.settle{value: owedEth}();
+        }
+
+        // Settle currency1 (ascend ERC-20). V4 sync-then-transfer-then-settle.
+        if (owedAscend > 0) {
+            poolManager.sync(poolKey.currency1);
+            ascend.transfer(address(poolManager), owedAscend);
+            poolManager.settle();
+        }
+
+        liquidityHeld = liquidity;
     }
 
     // -----------------------------------------------------------------
