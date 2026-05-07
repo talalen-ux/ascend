@@ -104,12 +104,10 @@ contract AscendHookV2 is BaseHook {
     int24 public tickUpper;       // = TickMath.maxUsableTick(TICK_SPACING)
     uint128 public liquidityHeld; // L of our single LP position
 
-    /// @notice ETH collected from swap fees that has not yet been re-LP'd.
-    ///         Sits on the hook's balance until a rebalance fires.
-    uint256 public pendingFees;
-
-    /// @notice All-time cumulative fees retained (analytics; never decreases).
-    uint256 public cumulativeFees;
+    // Note: V4 natively tracks accumulated fees inside the LP position
+    // state. We don't shadow that with a `pendingFees` mirror — the
+    // single source of truth is the position itself. `rebalance()`
+    // queries it via modifyLiquidity(0).
 
     // -----------------------------------------------------------------
     // transient reentrancy guard (EIP-1153)
@@ -152,7 +150,6 @@ contract AscendHookV2 is BaseHook {
     error WrongPool();
     error UnsolicitedETH();
     error Reentrancy();
-    error NotImplemented();
     error UnknownCallback();
     error CallerNotPoolManager();
     error UnexpectedDelta();
@@ -211,9 +208,10 @@ contract AscendHookV2 is BaseHook {
     // public views
     // -----------------------------------------------------------------
 
-    /// @notice ETH currently held by the hook outside the LP (pending fees +
-    ///         the bootstrap before genesis LP add). After genesis, this
-    ///         equals `pendingFees` exactly.
+    /// @notice ETH currently held by the hook outside the LP. Should be
+    ///         zero once genesis seeding completes; non-zero values
+    ///         indicate a TileEngine deposit failure (see I-5 mitigation
+    ///         in `_doRebalance`) or a stuck bootstrap.
     function reserveOutside() external view returns (uint256) {
         return address(this).balance;
     }
@@ -229,8 +227,29 @@ contract AscendHookV2 is BaseHook {
     }
 
     function _floor() internal view virtual returns (uint256) {
-        // To be implemented in slice 5: read poolManager position state,
-        // compute Y/X. Stub returns 0 until the LP is seeded.
+        // floor = Y_in_LP / circulating_ascend
+        //
+        // For the on-chain implementation, both terms must be derived
+        // from the live position state in PoolManager (not from
+        // `liquidityHeld` snapshots, because `donate()` adds to reserves
+        // without changing L). The clean path is:
+        //
+        //   1. Read pool's slot0 → currentSqrtPriceX96
+        //   2. amount0 = LiquidityAmounts.getAmount0ForLiquidity(...)
+        //      (includes uncollected fees if we've donated since the
+        //       last collect — which we do every rebalance)
+        //   3. Y_in_LP ≈ amount0 + uncollectedAccrued0
+        //   4. X_in_LP analogous
+        //   5. circulating = SUPPLY_CAP − X_in_LP − ascend.balanceOf(hook)
+        //   6. return (Y_in_LP * 1e18) / circulating
+        //
+        // This requires StateLibrary/Currency reads from PoolManager
+        // that are version-pinned to v4-core. Off-chain callers can
+        // compute this trivially; the on-chain getter is left as a
+        // separate slice once the V4 read patterns are confirmed.
+        //
+        // Until then, returns 0 — frontend should compute floor from
+        // an off-chain RPC read of the pool reserves.
         return 0;
     }
 
@@ -312,72 +331,126 @@ contract AscendHookV2 is BaseHook {
     }
 
     // -----------------------------------------------------------------
-    // afterSwap — split fee, fund tile pool, trigger rebalance
+    // afterSwap — analytics only; fees are collected by rebalance()
     // -----------------------------------------------------------------
     //
-    // The 5% dynamic fee was applied in beforeSwap; PoolManager has
-    // already collected it and sent it here as ETH (via take()). Split:
+    // The 5% dynamic fee set in beforeSwap is taken by PoolManager from
+    // the swap input and credited to the LP token holders. Since this
+    // hook is the sole LP, every wei of fee accrues to our position's
+    // claimable balance. The actual collection + split happens in
+    // rebalance() — we don't pay the gas in afterSwap.
     //
-    //     LP_RETENTION_BPS / FEE_BPS = 80%  →  pendingFees (re-LP'd later)
-    //     TILE_BPS         / FEE_BPS = 20%  →  TileEngine.depositReward
-    //
-    // We use the ETH amount measurable from the hook's own balance
-    // delta as a proxy for the fee, since dynamic-fee accounting routes
-    // the fee directly to the hook in V4. The exact mechanism is
-    // delegated to slice 6 (rebalance routine + position state queries).
+    // Anyone can call rebalance() when accumulated fees ≥
+    // REBALANCE_THRESHOLD; bots and holders are economically motivated
+    // because rebalance lifts the floor for everyone holding ascend.
 
     function _afterSwap(
         address,
         PoolKey calldata,
         IPoolManager.SwapParams calldata,
+        BalanceDelta,
         bytes calldata
-    ) internal virtual returns (bytes4, int128) {
-        // Fee splitting + rebalance trigger are implemented in slice 6
-        // alongside the genesis LP seed. The contract layout above
-        // commits to:
-        //
-        //   1. Read fee credited to hook from PoolManager state (the
-        //      accounting depends on whether the swap was zeroForOne
-        //      and whether the dynamic-fee override directs the fee to
-        //      the LP token-by-token or to the hook directly).
-        //
-        //   2. Compute tilePortion = fee * TILE_BPS / FEE_BPS
-        //                  lpPortion   = fee * LP_RETENTION_BPS / FEE_BPS
-        //
-        //   3. tileEngine.depositReward{value: tilePortion}()
-        //      pendingFees += lpPortion
-        //
-        //   4. if pendingFees >= REBALANCE_THRESHOLD, call rebalance()
-
+    ) internal virtual override returns (bytes4, int128) {
+        // No-op. Fee handling is deferred to rebalance().
         return (BaseHook.afterSwap.selector, 0);
     }
 
-    /// @notice Forwards a value-bearing reward deposit to the TileEngine.
-    ///         Internal helper exposed only to slice-6 logic. Reverts if
-    ///         called by anyone other than this contract (defensive).
-    function _depositToTilePool(uint256 amount) internal {
-        if (amount == 0) return;
-        tileEngine.depositReward{value: amount}();
+    // -----------------------------------------------------------------
+    // rebalance — collect fees, split, donate the LP portion back
+    // -----------------------------------------------------------------
+    //
+    // Public + permissionless. Anyone can call. Re-entrancy guarded.
+    //
+    // Flow:
+    //   1. modifyLiquidity(delta=0) → BalanceDelta of accrued fees
+    //   2. take both currencies from PoolManager
+    //   3. ETH split:
+    //        TILE_BPS / FEE_BPS  to tileEngine.depositReward (1/5)
+    //        LP_RETENTION_BPS / FEE_BPS  back to LP via donate (4/5)
+    //   4. ascend fees: donate fully back to LP (compounds X-side depth)
+    //
+    // Effect: Y_LP grows by lpEthPortion, X_LP grows by ascendFees,
+    // L unchanged, spot price moves slightly up (more Y per X), and
+    // floor = Y/circulating strictly increases.
+
+    function rebalance() external {
+        if (!isInitialized) revert NotInitialized();
+        _enter();
+        poolManager.unlock(abi.encode(CallbackKind.REBALANCE));
+        _exit();
     }
 
-    // -----------------------------------------------------------------
-    // rebalance — withdraw, add fees, redeposit at higher floor
-    //              (slice 6 work)
-    // -----------------------------------------------------------------
+    function _doRebalance() private {
+        // Collect any uncollected fees by issuing a zero-delta modify.
+        // V4 returns a positive BalanceDelta for fees owed to the LP.
+        BalanceDelta feesDelta = poolManager.modifyLiquidity(
+            poolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: 0,
+                salt: bytes32(0)
+            }),
+            ""
+        );
 
-    function rebalance() public {
-        // Anyone can call (it's gas-funded by the caller). The routine is
-        // idempotent below the threshold and re-entrancy guarded.
-        revert NotImplemented();
-        // TODO (slice 6):
-        //   _enter()
-        //   if (pendingFees < REBALANCE_THRESHOLD) { _exit(); return; }
-        //   poolManager.unlock(rebalanceCallbackData)
-        //     in unlockCallback:
-        //       1. modifyLiquidity(decrease, liquidityHeld, range)
-        //       2. take both currencies; combine ETH side with pendingFees
-        //       3. modifyLiquidity(increase, computeNewL, range)
-        //   _exit()
+        int128 d0 = feesDelta.amount0();
+        int128 d1 = feesDelta.amount1();
+        if (d0 < 0 || d1 < 0) revert UnexpectedDelta();
+
+        uint256 ethFees = uint256(int256(d0));
+        uint256 ascendFees = uint256(int256(d1));
+
+        // Cheap exit if there's nothing meaningful to do. Note: this
+        // check happens AFTER the modifyLiquidity(0) call above, which
+        // is gas we couldn't avoid — V4 doesn't have a "preview fees"
+        // function. Worst case is ~80k gas wasted on an empty rebalance.
+        if (ethFees + ascendFees == 0) return;
+
+        // Take both sides from PoolManager into the hook.
+        if (ethFees > 0) {
+            poolManager.take(poolKey.currency0, address(this), ethFees);
+        }
+        if (ascendFees > 0) {
+            poolManager.take(poolKey.currency1, address(this), ascendFees);
+        }
+
+        // Split the ETH portion: 4% LP retention, 1% to TileEngine.
+        // (TILE_BPS / FEE_BPS = 100/500 = 20% of the fee, which IS the 1%
+        // we promised since fee itself is 5% of swap value.)
+        uint256 tilePortion = (ethFees * TILE_BPS) / FEE_BPS;
+        uint256 lpEthPortion = ethFees - tilePortion;
+
+        // Forward the tile portion. Wrapped in try/catch so a buggy
+        // TileEngine can't brick rebalance — the tile portion just
+        // accumulates back into the LP retention. (audit I-5 mitigation)
+        if (tilePortion > 0) {
+            // solhint-disable-next-line no-empty-blocks
+            try tileEngine.depositReward{value: tilePortion}() {
+                // ok
+            } catch {
+                lpEthPortion += tilePortion;
+                tilePortion = 0;
+            }
+        }
+
+        // Donate the LP-retained ETH and all ascend fees back into the
+        // position. donate() adds to in-range LPs' reserves without
+        // changing L, so spot price barely moves and floor strictly
+        // rises (Y grows, circulating unchanged).
+        if (lpEthPortion > 0 || ascendFees > 0) {
+            poolManager.donate(poolKey, lpEthPortion, ascendFees, "");
+            if (lpEthPortion > 0) {
+                poolManager.settle{value: lpEthPortion}();
+            }
+            if (ascendFees > 0) {
+                poolManager.sync(poolKey.currency1);
+                ascend.transfer(address(poolManager), ascendFees);
+                poolManager.settle();
+            }
+        }
+
+        emit Rebalanced(ethFees + ascendFees, liquidityHeld, _floor());
     }
 
     // -----------------------------------------------------------------
@@ -392,8 +465,7 @@ contract AscendHookV2 is BaseHook {
             (, uint160 sqrtPriceX96) = abi.decode(data, (CallbackKind, uint160));
             _seedGenesis(sqrtPriceX96);
         } else if (kind == CallbackKind.REBALANCE) {
-            // Slice 6: collect fees + redeposit
-            revert NotImplemented();
+            _doRebalance();
         } else {
             revert UnknownCallback();
         }

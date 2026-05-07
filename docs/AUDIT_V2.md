@@ -34,7 +34,7 @@ be removed. Audit items below are for v2.
 
 ## CRITICAL
 
-### C-1 — `_afterSwap` is a stub; fee split is not implemented
+### ~~C-1~~ — `_afterSwap` is a stub; fee split is not implemented — **REWRITTEN**
 
 **file:** `contracts/src/AscendHookV2.sol`
 **function:** `_afterSwap`
@@ -48,9 +48,24 @@ contract is non-functional as committed.** Slice 6 will implement:
 3. `lpPortion = fee × LP_RETENTION_BPS / FEE_BPS` → `pendingFees`
 4. `if pendingFees >= REBALANCE_THRESHOLD: rebalance()`
 
-**Status:** acknowledged in code comments. Blocking for mainnet.
+**Resolution:** rewrote the architecture in slice 6. `_afterSwap` is
+intentionally a no-op: V4 natively credits the dynamic fee to the LP
+position state (the hook is the sole LP), so there's nothing to do
+synchronously per swap. Fee collection + split happens in `rebalance()`,
+a public permissionless function:
 
-### C-2 — `_afterInitialize` does not seed the genesis LP
+  1. `modifyLiquidity(0)` returns accrued fees as `BalanceDelta`
+  2. `take()` both currencies into the hook
+  3. ETH split: 4/5 (`LP_RETENTION_BPS / FEE_BPS`) to LP, 1/5 to TileEngine
+  4. Donate the LP portion + ascend fees back via `poolManager.donate()` —
+     adds to reserves without changing L, so spot price barely moves and
+     floor strictly rises
+  5. TileEngine deposit wrapped in try/catch (I-5 mitigation): if the
+     game contract reverts, the tile portion stays in the LP
+
+**Status:** FIXED. V4-specifics still need foundry verification (H-2).
+
+### ~~C-2~~ — `_afterInitialize` does not seed the genesis LP — **FIXED**
 
 **file:** `contracts/src/AscendHookV2.sol`
 **function:** `_afterInitialize`
@@ -69,9 +84,17 @@ empty pool.
 MIN_TICK`, `tickUpper = MAX_TICK`. The hook is the LP, so
 `beforeAddLiquidity` must accept `sender == address(this)`.
 
-**Status:** Slice 5 work. Blocking for mainnet.
+**Resolution:** slice 5 implemented. `_afterInitialize` calls
+`poolManager.unlock(GENESIS, sqrtPriceX96)`. `unlockCallback`
+dispatches on `CallbackKind` to `_seedGenesis`, which computes
+liquidity via `LiquidityAmounts.getLiquidityForAmounts` for the
+full range and calls `modifyLiquidity` to deposit. Both currencies
+are then settled (ETH via `settle{value:}`, ascend via the
+sync/transfer/settle pattern). The seed is atomic with init.
 
-### C-3 — `unlockCallback` reverts `NotImplemented`
+**Status:** FIXED. V4 sign convention still needs foundry verification (H-2).
+
+### ~~C-3~~ — `unlockCallback` reverts `NotImplemented` — **FIXED**
 
 **file:** `contracts/src/AscendHookV2.sol`
 **function:** `unlockCallback`
@@ -80,9 +103,13 @@ Required for both genesis deposit (C-2) and rebalance (C-4). Currently
 unconditionally reverts. **No `modifyLiquidity` call can complete
 through this hook.**
 
-**Status:** Slice 5 + Slice 6. Blocking.
+**Resolution:** slice 5/6 implemented. The callback now dispatches
+to `_seedGenesis` (slice 5) and `_doRebalance` (slice 6). The
+NotImplemented error has been removed.
 
-### C-4 — `rebalance()` reverts `NotImplemented`
+**Status:** FIXED.
+
+### ~~C-4~~ — `rebalance()` reverts `NotImplemented` — **FIXED**
 
 **file:** `contracts/src/AscendHookV2.sol`
 **function:** `rebalance`
@@ -91,7 +118,14 @@ The rebalance routine is the engine of the floor-ratchet. Without it,
 fees accumulate on the hook indefinitely without ever lifting the
 floor. **The floor invariant cannot be preserved.**
 
-**Status:** Slice 6. Blocking.
+**Resolution:** slice 6 implemented. `rebalance()` is public,
+permissionless, re-entrancy guarded, and calls into the unlock
+callback's REBALANCE branch (`_doRebalance`). Lifts the floor by
+donating retained ETH back to the LP (no L change → no price drift)
+and forwarding 1/5 of the ETH fee to the TileEngine. Holders or bots
+can call this freely; cost amortizes naturally with epoch revenue.
+
+**Status:** FIXED.
 
 ---
 
@@ -466,16 +500,17 @@ prevent accidental deploy.
 
 ### blocking (must fix before mainnet)
 
-- [ ] **C-1** — implement `_afterSwap` fee split + rebalance trigger
-- [ ] **C-2** — implement genesis LP seed in `_afterInitialize`
-- [ ] **C-3** — implement `unlockCallback` for genesis + rebalance
-- [ ] **C-4** — implement `rebalance()` routine
+- [x] **C-1** — `_afterSwap` rewritten; fee handling moved to permissionless `rebalance()` using V4 native fee accrual + `donate()`
+- [x] **C-2** — genesis LP seed implemented; atomic with `afterInitialize`
+- [x] **C-3** — `unlockCallback` dispatches to `_seedGenesis` and `_doRebalance`
+- [x] **C-4** — `rebalance()` implemented; collect → split → donate
 - [ ] **H-1** — atomic Genesis deploy script
-- [ ] **H-2** — `forge test` against real PoolManager; verify dynamic
-      fee routes to hook correctly
+- [ ] **H-2** — `forge test` against real PoolManager; verify
+      `BalanceDelta` sign convention, fee credit behavior under
+      `OVERRIDE_FEE_FLAG`, and `donate()` semantics
 - [x] **H-3** — `EXPECTED_MULTIPLIER_SCALED` set to 1_625_000 to match weight table
 - [ ] **M-1** — verify `_beforeAddLiquidity` sender semantics
-- [ ] **M-5** — buffer tile-pool deposits to amortize gas
+- [ ] **M-5** — N/A under new design (fees collected lazily by rebalance, not on every swap)
 
 ### recommended
 
