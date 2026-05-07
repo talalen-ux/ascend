@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
@@ -23,6 +24,7 @@ import {Ascend} from "./Ascend.sol";
 ///         of pulling the input and pushing the output.
 contract AscendRouter is IUnlockCallback {
     using CurrencyLibrary for Currency;
+    using PoolIdLibrary for PoolKey;
 
     IPoolManager public immutable poolManager;
     AscendHook public immutable hook;
@@ -32,6 +34,7 @@ contract AscendRouter is IUnlockCallback {
     error NotPoolManager();
     error NotInitialized();
     error AlreadyBound();
+    error WrongKey();
     error SlippageExceeded();
     error TransferFailed();
 
@@ -56,9 +59,19 @@ contract AscendRouter is IUnlockCallback {
     /// @notice Bind to the canonical pool key. Anyone may call this exactly
     ///         once after the hook + pool are initialized; the parameters are
     ///         then immutable.
+    ///
+    /// @dev    SECURITY: validates that the key passed in matches the hook's
+    ///         canonical pool exactly — same hooks address, same currencies,
+    ///         same poolId hash. Without this check a front-runner could bind
+    ///         the router to a malicious pool and steal user funds. (audit
+    ///         finding C-1).
     function bind(PoolKey calldata key) external {
         if (poolKey.tickSpacing != 0) revert AlreadyBound();
         if (!hook.isInitialized()) revert NotInitialized();
+        if (address(key.hooks) != address(hook)) revert WrongKey();
+        if (!key.currency0.isAddressZero()) revert WrongKey();
+        if (Currency.unwrap(key.currency1) != address(ascend)) revert WrongKey();
+        if (PoolId.unwrap(key.toId()) != PoolId.unwrap(hook.poolId())) revert WrongKey();
         poolKey = key;
     }
 

@@ -1,0 +1,40 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-label="ascend">
+  <!--
+    ascend mark.
+    organic stylized "a + o" ligature in lime, drawn with smooth bezier
+    curves to match the hand-feel of the brand reference. drop in a
+    pixel-traced version here when one is available; the dapp loads
+    /logo.svg directly so no code change is needed for replacement.
+  -->
+  <!-- the "a" body: a soft, fat blob with a hook on the lower left -->
+  <path
+    d="
+      M 49.5 8
+      C 70 4, 89 18, 90 42
+      C 91 64, 78 86, 56 89
+      C 41 91, 26 87, 22 76
+      C 18 65, 25 56, 38 56
+      C 50 56, 55 62, 55 70
+      L 55 78
+      C 55 84, 50 86, 44 84
+      C 36 81, 33 73, 35 65
+      C 38 53, 50 47, 60 50
+      C 70 53, 73 60, 73 68
+      C 73 75, 68 80, 60 79
+      Z
+    "
+    fill="#c5ee47"
+  />
+  <!-- the "o" eye, cut from the body -->
+  <ellipse cx="63" cy="49" rx="8" ry="14" fill="#070708" />
+  <!-- a small notch at the bottom-left to echo the reference's open hook -->
+  <path
+    d="
+      M 30 78
+      C 24 76, 22 71, 24 67
+      C 27 62, 33 64, 36 70
+      C 38 75, 35 80, 30 78 Z
+    "
+    fill="#070708"
+  />
+</svg>

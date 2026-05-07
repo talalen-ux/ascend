@@ -37,18 +37,9 @@ export function TopNav() {
   );
 }
 
+// Mark is rendered as <img src="/logo.svg" /> via the shared component.
+// Inlined here as a lightweight wrapper to keep the navbar static.
 function Mark() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5">
-      <circle cx="12" cy="12" r="10" stroke="#c5ee47" strokeWidth="1" fill="none" />
-      <path
-        d="M5 18 L9 18 L9 14 L13 14 L13 10 L17 10 L17 6 L19 6"
-        stroke="#c5ee47"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/logo.svg" alt="ascend" width={20} height={20} style={{ display: "block" }} />;
 }

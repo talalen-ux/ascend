@@ -149,7 +149,7 @@ contract AscendHook is BaseHook {
     error WrongPool();
     error ZeroAmount();
     error InsufficientSupply();
-    error TransferFailed();
+    error UnsolicitedETH();
     error Reentrancy();
 
     // -----------------------------------------------------------------
@@ -380,10 +380,6 @@ contract AscendHook is BaseHook {
             / (reserveBefore * priceMultiplierBps);
         if (ascendOut == 0) revert ZeroAmount();
 
-        // Ratchet cumulative inflow upward. This persists across sells —
-        // redemption never reduces it. The premium is monotone non-decreasing.
-        cumulativeEthIn += ethIn;
-
         // 1) Pull the entire ETH input from the PoolManager into the hook.
         poolManager.take(key.currency0, address(this), ethIn);
 
@@ -393,6 +389,12 @@ contract AscendHook is BaseHook {
         poolManager.sync(key.currency1);
         ascend.mint(address(poolManager), ascendOut);
         poolManager.settle();
+
+        // 3) After all external calls succeed, ratchet cumulative inflow.
+        //    Strict CEI: state-mutating effect lands after interactions.
+        //    Premium is monotone non-decreasing forever (sells do not
+        //    decrement this).
+        cumulativeEthIn += ethIn;
 
         emit Buy(swapper, ethIn, fee, ascendOut, _floorAfter());
 
@@ -477,6 +479,6 @@ contract AscendHook is BaseHook {
     // -----------------------------------------------------------------
 
     receive() external payable {
-        if (msg.sender != address(poolManager)) revert TransferFailed();
+        if (msg.sender != address(poolManager)) revert UnsolicitedETH();
     }
 }

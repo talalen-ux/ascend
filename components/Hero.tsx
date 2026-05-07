@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Mark } from "./Mark";
 
 export function Hero() {
   return (
@@ -11,7 +12,10 @@ export function Hero() {
         transition={{ duration: 0.5 }}
         className="flex items-center gap-3"
       >
-        <Mark />
+        <div className="relative">
+          <div className="absolute inset-0 rounded-full bg-accent/15 blur-md animate-breathe" />
+          <Mark size={28} className="relative" />
+        </div>
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
           ascend · a new ethereum-native asset class
         </span>
@@ -56,25 +60,5 @@ export function Hero() {
         <span>no admin · no upgrade · no migration</span>
       </motion.div>
     </header>
-  );
-}
-
-function Mark() {
-  return (
-    <div className="relative h-7 w-7">
-      <div className="absolute inset-0 rounded-full bg-accent/20 animate-breathe" />
-      <svg viewBox="0 0 24 24" className="relative h-7 w-7">
-        <circle cx="12" cy="12" r="10" stroke="#c5ee47" strokeWidth="1" fill="none" />
-        {/* upward staircase */}
-        <path
-          d="M5 18 L9 18 L9 14 L13 14 L13 10 L17 10 L17 6 L19 6"
-          stroke="#c5ee47"
-          strokeWidth="1.5"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
   );
 }

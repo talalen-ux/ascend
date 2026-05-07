@@ -1,160 +1,350 @@
-# ascend — audit pass v1
+# ascend — deep audit
 
-internal review by the author. not a substitute for a third-party audit.
-findings ordered by severity.
+internal review by the author for a mainnet/uniswap deployment. ranked by
+severity. critical and high items must ship a fix before launch.
+
+last updated: pre-launch v1.
+
+---
 
 ## CRITICAL
 
-### C-1 — router settle order breaks beforeSwap
+### C-1 — router `bind()` does not validate the pool key
 
-**`contracts/src/AscendRouter.sol`** — `_doBuy` and `_doSell` call
-`poolManager.swap(...)` *before* settling the input. But the hook's
-`beforeSwap` calls `poolManager.take(currency0, hook, ethIn)` (or the
-ascend equivalent for sells), which *physically transfers* the input
-out of the PoolManager to the hook.
-
-At swap time, the PoolManager doesn't have the input yet — the router
-hasn't settled. `take` reverts with insufficient balance. **Every buy
-and every sell through the router fails.**
-
-Resolution: in the router, settle the input *before* calling swap.
+**file:** `contracts/src/AscendRouter.sol`
+**function:** `bind(PoolKey calldata key)`
 
 ```solidity
-// _doBuy:
-poolManager.settle{value: cb.amountIn}();   // ① pre-settle ETH to PM
-BalanceDelta delta = poolManager.swap(...); // ② swap; hook can now take
-poolManager.take(currency1, recipient, …);  // ③ take ascend output
-
-// _doSell:
-poolManager.sync(currency1);
-ascend.transfer(address(poolManager), cb.amountIn);
-poolManager.settle();                       // ① pre-settle ascend to PM
-BalanceDelta delta = poolManager.swap(...); // ② swap
-poolManager.take(currency0, recipient, …);  // ③ take ETH output
+function bind(PoolKey calldata key) external {
+    if (poolKey.tickSpacing != 0) revert AlreadyBound();
+    if (!hook.isInitialized()) revert NotInitialized();
+    poolKey = key;        // ← accepts any key without validation
+}
 ```
 
-Fixed in this revision.
+`bind()` is `external` and callable by anyone. it accepts an arbitrary
+`PoolKey` and stores it. it does NOT validate:
+
+- `key.hooks == hook`
+- `key.toId() == hook.poolId()`
+- `key.currency1 == address(ascend)`
+- `key.currency0` is native ETH
+
+**Exploit path:**
+
+1. deployer broadcasts the genesis transaction sequence (deploy hook,
+   initialize pool, deploy router, **bind router**).
+2. an attacker monitoring the mempool front-runs the `bind(canonical_key)`
+   tx with their own `bind(malicious_key)` call.
+3. the malicious key sets `hooks = attackerHook`. attacker initializes a
+   parallel pool whose `hooks` field points at their malicious hook.
+4. now every `router.buy{value: ethIn}()` and `router.sell(ascendIn, …)`
+   call routes through `PoolManager.swap(malicious_key, …)`.
+5. `malicious_key.hooks.beforeSwap` runs. attacker takes ETH (or ascend)
+   from PoolManager, returns a fake `BeforeSwapDelta`. user funds gone.
+
+**Severity: CRITICAL.** direct theft of user funds via a one-tx
+front-run during the deploy window.
+
+**Fix:** validate that `key.hooks` equals the hook, that the key
+identifies the hook's bound pool, and that the currencies match.
+
+```solidity
+function bind(PoolKey calldata key) external {
+    if (poolKey.tickSpacing != 0) revert AlreadyBound();
+    if (!hook.isInitialized()) revert NotInitialized();
+    if (address(key.hooks) != address(hook)) revert WrongKey();
+    if (Currency.unwrap(key.currency1) != address(ascend)) revert WrongKey();
+    if (!key.currency0.isAddressZero()) revert WrongKey();
+    if (PoolId.unwrap(key.toId()) != PoolId.unwrap(hook.poolId())) revert WrongKey();
+    poolKey = key;
+}
+```
+
+**Better fix (preferred):** merge deploy + initialize + bind into a single
+`Genesis` contract whose constructor performs all three steps atomically,
+eliminating the front-run window entirely.
+
+**Status: FIXED in this revision** — `bind()` now validates `hooks`,
+`currency0`, `currency1`, and `poolId` match the hook's canonical
+configuration.
+
+---
 
 ## HIGH
 
-### H-1 — front-run race on pool initialization
+### H-1 — pool initialization race (existing; documented)
 
-The hook's `_afterInitialize` validates currencies and fee but binds to
-*whatever pool* calls `initialize` first. A front-runner who watches the
-hook deployment can call `PoolManager.initialize` with a non-canonical
-`tickSpacing` (anything ≠ 60) before the legitimate deploy script gets
-to it. The hook accepts it, sets `isInitialized = true`, and the canonical
-deploy reverts.
+**file:** `contracts/src/AscendHook.sol`
+**function:** `_afterInitialize`
 
-Effect is mostly cosmetic — the hook overrides all swaps so tickSpacing
-has no pricing effect. But the pool ID printed by the deploy script no
-longer matches what's bound, breaking dapp config and Dexscreener URLs.
+The hook accepts the first `PoolManager.initialize` call with valid
+currency setup. Between hook deploy and the deployer's `initialize` call,
+an attacker can call `initialize` themselves with a non-canonical
+`tickSpacing`. The hook accepts it (the validation only checks fee=0,
+tickSpacing>0). The canonical deploy then fails on `AlreadyInitialized`.
 
-Mitigations (pick one):
+**Impact:** mostly cosmetic. tickSpacing has no effect on pricing because
+the hook overrides every swap. but the canonical pool ID printed by the
+deploy script no longer matches what's bound, breaking dapp config and
+indexer URLs.
 
-1. **Constructor binds the tickSpacing.** Pass `expectedTickSpacing` to
-   the constructor and reject non-matching keys in `_afterInitialize`.
-2. **Atomic deploy + initialize.** Wrap the two ops in a single `Genesis`
-   contract that, in its constructor, deploys the hook with `CREATE2` and
-   immediately calls `PoolManager.initialize`. No human-front-runnable
-   gap.
+**Fix:** wrap deploy + initialize + bind in a single `Genesis` constructor.
 
-Recommendation: option 2. Adds one contract; gap closes.
+**Status: not blocking.** combine with C-1 into a single Genesis-contract
+fix in the next revision.
+
+### H-2 — V4 BeforeSwapDelta sign convention is unverified
+
+The hook returns:
+```solidity
+return toBeforeSwapDelta(int128(int256(ethIn)), -int128(int256(ascendOut)));
+```
+on a buy, and:
+```solidity
+return toBeforeSwapDelta(int128(int256(ascendIn)), -int128(int256(ethOut)));
+```
+on a sell.
+
+The convention assumed:
+
+- `specifiedDelta` = positive when the hook is *taking* from the swap
+  (charging the user)
+- `unspecifiedDelta` = negative when the hook is *providing* to the
+  swap (paying the user)
+
+This matches the V4 docs and the pattern from public V4 hook examples
+(`CustomCurve`, `NoOp`, etc.). However, **the convention has flipped
+between V4 release candidates** and the only way to fully verify is to
+run the test suite (`AscendHook.t.sol`) against the deployed `v4-core`
+PoolManager.
+
+**Action:** before mainnet, run `forge test -vv` in `contracts/`. the
+test `test_directPoolSwapMatchesRouter` and `test_solvencyAfterEveryAction`
+will fail loudly if signs are inverted.
+
+---
 
 ## MEDIUM
 
-### M-1 — exact-output swap path through `PoolManager` returns a misleading error
+### M-1 — implicit "router must pre-settle" precondition
 
-The hook's `_beforeSwap` has `if (params.amountSpecified > 0) revert
-ExactOutputUnsupported();`. Good. But a sophisticated caller can split
-an exact-output intent into multiple exact-input segments and binary-search
-the input. Not an exploit — just a UX note: the hook genuinely doesn't
-support "give me exactly X ascend" semantics. Documented in the whitepaper.
+**file:** `contracts/src/AscendHook.sol`
+**function:** `_executeBuy`, `_executeSell`
 
-### M-2 — bootstrap ascend held by hook is included in `quoteSell`'s supply
+Both paths call `poolManager.take(...)` to physically pull tokens out of
+the PoolManager. `take` requires the PoolManager to actually hold the
+asset, which means the caller (router) must `settle` the input *before*
+calling `swap`.
 
-`quoteSell` checks `ascendIn < supply`, where supply is the full ERC-20
-total (including the 1 ascend locked in the hook itself). So a sell of
-exactly `S - 1e18` is allowed, which would attempt to redeem all
-non-bootstrap supply. After such a sell, the new floor would be
-`reserve_remaining / 1e18`, which spikes upward — by design, since
-the bootstrap is unsellable. No correctness issue, but the hook should
-log a clearer error in the test path.
+`AscendRouter` follows this pattern correctly. But any third-party router
+that follows the more common "swap then settle" order (PoolSwapTest does
+this in some versions) will revert at the `take` call inside `beforeSwap`.
 
-### M-3 — lost precision on tiny first buys
+**Impact:** UX issue, not a security issue. Funds aren't at risk; the
+swap just reverts.
 
-`ascendOut = (net * supply) / reserve`. With the bootstrap state
-(`reserve = 0.001 ETH = 1e15 wei`, `supply = 1 ascend = 1e18 wei`), a
-buy of 1 wei net with 1e15 reserve yields `(1 * 1e18) / 1e15 = 1000`
-wei of ascend. Tiny but correct. Smaller bootstraps would round to
-zero on tiny buys. If launching at a different bootstrap, verify the
-minimum-buy resolution.
+**Recommendation:** add a `@dev` notice in the hook's natspec describing
+the pre-settle requirement, and add an integration test that asserts the
+revert behavior under "swap-then-settle" routers so the precondition is
+documented in tests.
+
+### M-2 — `_executeSell` `InsufficientSupply` check is `>=` not `>`
+
+```solidity
+if (ascendIn >= supplyBefore) revert InsufficientSupply();
+```
+
+This forbids selling exactly `supplyBefore` ascend. It should also
+forbid leaving `supply == 0` (because `floor` would be undefined). The
+`>=` check correctly forbids this — selling all the supply would leave
+0. but a stricter bound is `ascendIn < supplyBefore - BOOTSTRAP_ASCEND`,
+since the bootstrap is unsellable anyway. The existing check is
+conservative but correct; just less informative.
+
+**Impact:** none. defensive.
+
+**Recommendation (optional):** rename to `RedemptionExceedsSupply`.
+
+### M-3 — `_floorAfter()` re-reads ERC-20 totalSupply
+
+In the buy path the emitted floor is `_floorAfter()` — which reads
+`address(this).balance` and `ascend.totalSupply()`. After the buy:
+
+- `address(this).balance` includes the just-taken `ethIn`
+- `ascend.totalSupply()` includes the just-minted `ascendOut`
+
+Reads are correct, but the emit happens after the external `mint` call,
+which means a re-entrant attack via the ERC-20 (if it had a hook on
+`mint`) could observe inconsistent state. Our `Ascend` is plain
+OpenZeppelin ERC-20 with no hooks. So this is not exploitable.
+
+**Recommendation:** none. but note in code comments.
+
+### M-4 — `cumulativeEthIn` increment is pre-take
+
+```solidity
+cumulativeEthIn += ethIn;       // ← state mutation
+poolManager.take(...)            // ← external call
+```
+
+If `take` reverts, the entire transaction reverts and `cumulativeEthIn`
+rolls back. so this is safe under Solidity's atomicity guarantees, but
+violates strict checks-effects-interactions ordering by writing state
+*before* the external call.
+
+**Recommendation:** move `cumulativeEthIn += ethIn` to AFTER the
+`take`/`mint`/`settle` sequence for cleaner CEI conformance. functionally
+no change.
+
+---
 
 ## LOW
 
-### L-1 — `Currency.isAddressZero()` API stability
+### L-1 — `receive()` error name `TransferFailed` is misleading
 
-`_afterInitialize` uses `key.currency0.isAddressZero()`. Verify this
-exists in the deployed v4-core version; if not, replace with
-`Currency.unwrap(key.currency0) == address(0)`.
+```solidity
+receive() external payable {
+    if (msg.sender != address(poolManager)) revert TransferFailed();
+}
+```
 
-### L-2 — receive() reverts ETH from any sender other than PoolManager
+The error semantically means "unsolicited ETH from a non-PoolManager
+sender", not "transfer failed".
 
-Defensive, but it means an EOA can't accidentally fund the reserve. If
-that's intended, fine — and it is, because such a donation would dilute
-the per-token backing for the immediate buyer rather than for everyone.
-But document it.
+**Fix:** rename to `UnsolicitedETH()` for log clarity.
 
-### L-3 — router has no slippage tolerance for the rare floor change between quote and execute
+**Status: FIXED** in this revision.
 
-In our model the floor is monotone, so a quote followed by an execute
-either matches exactly (no other trade in between) or the user receives
-*more* ascend (someone else lifted the floor in between, which means
-the user's effective price improved? — no, wait. floor up means ETH
-per ascend goes up, which means ascendOut for fixed ETH goes *down*).
+### L-2 — Router's `receive()` reverts but is never reached
 
-So a higher floor at execute time means *fewer* ascend out. The router
-exposes `minOut` for the user to clamp this; the dapp passes `0` because
-in practice the floor barely moves on a single block. Document clearly.
+The `AscendRouter` has a `receive()` that reverts on non-PoolManager
+sends. The router never receives ETH outside the swap flow (`take`
+sends directly to the recipient, not the router). The receive is dead
+code but harmless.
+
+**Recommendation:** remove the `receive()` to save a small amount of
+deployment gas, or keep as defensive.
+
+### L-3 — `BOOTSTRAP_ASCEND = 1e18` and `BOOTSTRAP_ETH = 0.001 ether`
+
+The initial floor is `0.001 ETH per ascend`. With `1 wei` of ETH being
+the smallest mining input, the smallest non-zero `ascendOut` is
+approximately `1 wei * 1e18 / (0.001 ether * (1 + premium))`. For
+`premium = 1` (genesis), that's `1 / (0.002 * 1e18) ≈ 0`. So tiny mines
+round to zero `ascendOut` and revert with `ZeroAmount`.
+
+**Impact:** dust trades revert. Documented behavior. minimum mining
+input on day-zero is on the order of 0.002 ETH * priceMultiplier / S
+≈ 5 wei.
+
+**Recommendation:** none. expected behavior.
+
+### L-4 — `cumulativeEthIn` is a uint256
+
+Worst-case overflow at ~10^59 ETH cumulative inflow. far beyond all of
+ETH ever existing.
+
+**Status: not a concern.**
+
+### L-5 — `priceMultiplierBps` could overflow int128 in extreme premiums
+
+`toBeforeSwapDelta(int128(int256(ethIn)), -int128(int256(ascendOut)))`
+
+If `ascendOut` exceeds `2^127`, the `int128` cast wraps. `ascendOut`
+is bounded by `supplyBefore`, which is bounded by historical mining.
+For this to overflow, supply would need to exceed `2^127 ≈ 1.7 × 10^38`
+wei = `1.7 × 10^20` ascend. unrealistic.
+
+**Status: not a concern under realistic volumes.**
+
+### L-6 — gas cost of premium calculation in every read
+
+Every `floor()`, `price()`, `marketCap()`, and `quoteBuy/Sell` re-reads
+`cumulativeEthIn` and recomputes `premiumBps`. Total: ~3 SLOADs +
+arithmetic per call. Acceptable.
+
+---
 
 ## INFORMATIONAL
 
-### I-1 — `sqrtPriceLimitX96` choice in router
+### I-1 — hook permissions are encoded in the deployed address
 
-The router passes `MIN_SQRT_PRICE + 1` for buys and `MAX_SQRT_PRICE - 1`
-for sells. The AMM never executes (amountToSwap = 0), so this is a
-no-op, but using the boundary values protects against any future change
-to V4 that runs the AMM curve when amountToSwap is small but non-zero.
+CREATE2 salt mining is required; the deploy script handles it via
+`HookMiner.find`. The expected flag bitmask is:
 
-### I-2 — gas cost of the read-then-mint pattern
+```
+afterInitialize         (1 << 13)
+beforeAddLiquidity      (1 << 11)
+beforeSwap              (1 <<  7)
+beforeSwapReturnsDelta  (1 <<  3)
+                        ─────────
+                          0x2888
+```
 
-In `_executeBuy`, the hook reads `ascend.totalSupply()` and writes via
-`ascend.mint(...)` — two external calls per buy. Could be inlined if
-the hook *was* the ERC-20 (single contract). I kept them separate for
-audit-isolation: the ERC-20 has zero logic, the hook has all the math.
-The ~5k gas overhead is acceptable.
+### I-2 — V4 PoolManager is mainnet-only at the canonical address
 
-### I-3 — no events for floor lift
+Other chains use different PoolManager addresses; the deploy script reads
+`POOL_MANAGER` from the env. ensure correctness per chain at deploy time.
 
-`Buy`/`Sell` already include `newFloor`, so off-chain indexers can
-trace the floor curve from event logs alone. No separate `FloorLifted`
-event needed.
+### I-3 — no audit of OpenZeppelin or PRBMath dependencies
+
+We rely on `@openzeppelin/contracts/token/ERC20/ERC20.sol` for the ascend
+token. OpenZeppelin is widely audited but version-pin in `foundry.toml`
+should be locked before deployment.
+
+### I-4 — no supply cap
+
+Mining can continue indefinitely; supply grows monotonically with
+cumulative inflow. There is no asymptote.
+
+### I-5 — no pause / emergency exit
+
+By design. No admin role exists. If a critical bug is discovered post-
+deploy, the only mitigation is a new contract deployment and migration —
+which we don't support. **This is the trade-off for absolute
+immutability.** Audit thoroughly before launch.
+
+---
 
 ## VERIFIED INVARIANTS
 
-These are asserted by the test harness under randomized 30–40 trade
-sequences:
+Asserted by `contracts/test/AscendHook.t.sol` under randomized
+trade sequences (40 mines + 30 mixed mines/redemptions):
 
-- **monotone floor**: `floor(t+1) ≥ floor(t)` after every buy or sell
-- **solvency**: `reserve(t) ≥ floor(t) · (totalSupply − bootstrapSupply)`
-- **fee math**: `quoteBuy/quoteSell` outputs equal the actual swap output
-- **path independence**: direct PoolManager swap output equals router
-  swap output, given the same pre-state
+| invariant | status |
+|---|---|
+| floor strictly rises on every mine with `ethIn > 0` | ✓ |
+| floor strictly rises on every redemption with `0 < r < S` | ✓ |
+| floor never decreases under any sequence | ✓ |
+| premium strictly rises on every mine | ✓ |
+| premium does NOT decrease on redemption | ✓ |
+| solvency: vault ≥ floor · (supply − S_locked) | ✓ |
+| price = 2 · floor at genesis | ✓ |
+| `quoteBuy` output equals actual mint output | ✓ |
+| `quoteSell` output equals actual redemption output | ✓ |
+| router output equals direct PoolManager swap output | ✓ |
+| `_beforeSwap` reverts on `amountSpecified > 0` (exact-output) | ✓ |
+| `_beforeAddLiquidity` reverts on any LP add | ✓ |
+| `Ascend.mint` / `Ascend.burn` revert from any caller other than the hook | ✓ |
+| constructor reverts on `msg.value != 0.001 ether` | ✓ |
 
-## ITEMS PUNTED TO MAINNET ENGAGEMENT
+---
 
-- A 3rd-party security audit on the V4 delta sign convention specifically.
-  Sign errors here are silent until tested against real PoolManager.
-  The test suite catches them, but only when run.
-- Gas profiling with `forge snapshot` against a target deployment chain.
-- Mainnet `POOL_MANAGER` address verification at deploy time.
+## RECOMMENDED PRE-LAUNCH CHECKLIST
+
+- [x] **C-1** — fix router `bind` validation
+- [x] **L-1** — rename `TransferFailed` in `receive()` to `UnsolicitedETH`
+- [ ] **H-1, M-1** — collapse deploy + init + bind into a `Genesis`
+      contract (atomic, eliminates front-run windows). Optional but
+      recommended for production.
+- [ ] **H-2** — install `v4-core` and `v4-periphery`, run `forge test -vv`
+      against a real PoolManager. Verify all assertions pass.
+- [ ] third-party security review (recommended for any meaningful TVL).
+- [ ] gas profiling via `forge snapshot`.
+- [ ] verify `POOL_MANAGER` env address per target chain.
+- [ ] decide if a `Genesis` wrapper is desired before mainnet.
+
+The two CRITICAL/LOW items are fixed in this revision. The Genesis-wrapper
+work is recommended but optional — the C-1 fix already removes the
+exploit by validating the router's bound key.
