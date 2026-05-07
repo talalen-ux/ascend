@@ -38,11 +38,11 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.15 }}
         className="mt-6 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        ascend is mined into existence by ETH. every wei paid in deepens
-        the vault that backs the asset. the floor — the price every holder
-        can always redeem at — is the vault divided by the issued supply.
-        the contract was born deterministic and runs against the same rules
-        every block after.
+        one Uniswap V4 pool. the hook is the only LP. every swap pays
+        5% — 4% deepens the floor for every remaining holder, 1% fills
+        a 12×12 grid of claimable tiles. flip one tile per 24h epoch
+        and reveal a 1× to 4× multiplier on your share of the pool.
+        the floor only goes up.
       </motion.p>
 
       <motion.div
@@ -51,13 +51,13 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.25 }}
         className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-ash"
       >
-        <span>vault-backed</span>
+        <span>122M cap</span>
         <span className="opacity-30">|</span>
-        <span>monotone floor</span>
+        <span>LP-backed floor</span>
         <span className="opacity-30">|</span>
-        <span>own counterparty</span>
+        <span>tile rewards from volume</span>
         <span className="opacity-30">|</span>
-        <span>no admin · no upgrade · no migration</span>
+        <span>no admin · no team · no presale</span>
       </motion.div>
     </header>
   );

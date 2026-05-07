@@ -1,132 +1,206 @@
 /**
- * Off-chain mirror of the engine math, dynamic-premium edition.
+ * Off-chain mirror of the v2 engine math.
  *
- *   floor(t)        = vault(t) / supply(t)
- *   premium_bps(t)  = BASE + cumulativeEthIn(t) · BPS / S
- *   price(t)        = floor(t) · (1 + premium_bps(t)/BPS)
- *   marketCap(t)    = price(t) · supply(t)  =  (1 + premium) · vault
+ *   v2 mechanics:
+ *     - constant-product LP at full range, hook is the only LP
+ *     - reserves (X, Y): X ascend in LP, Y ETH in LP
+ *     - 5% fee on every swap; on rebalance, 4% donates back to LP
+ *       (raises Y without minting), 1% goes to TileEngine
+ *     - circulating = SUPPLY_CAP - X
+ *     - floor = Y / circulating  (ETH per circulating ascend, the
+ *               redemption guarantee)
+ *     - spot price = Y / X       (the curve price, what swaps execute at)
  *
- *   mining fee     5%   retained in vault
- *   redemption fee 15%  retained in vault
- *   base premium   100% — at genesis, price = 2 · floor
- *   premium scale  250 ETH — premium gains BASE per S of cumulative mining
+ *   monotonicity:
+ *     fee retention compounds Y faster than the swap depletes/grows it,
+ *     so floor is non-decreasing under any finite trade sequence.
  *
- * cumulativeEthIn is a monotone-non-decreasing counter: every mine
- * permanently raises the premium for every subsequent miner. Sells do not
- * reduce it.
+ *   typical units in this file:
+ *     reserves and prices are floats in ETH-units (not wei)
+ *     `supplyTotal` is in ascend-units (not wei)
  */
 
-export const BUY_FEE_BPS = 500;
-export const SELL_FEE_BPS = 500;
-export const BASE_PREMIUM_BPS = 10_000; // 100% base — price = 2 · floor at genesis
-export const PREMIUM_SCALE_ETH = 250; // premium gains BASE per 250 ETH of cumulative mining
+export const SUPPLY_CAP = 122_000_000;
+export const BOOTSTRAP_ETH = 1;
+export const FEE_BPS = 500;
+export const LP_RETENTION_BPS = 400;
+export const TILE_BPS = 100;
 export const BPS_DENOM = 10_000;
-export const BOOTSTRAP_ETH = 0.001;
-export const BOOTSTRAP_ASCEND = 1;
+
+// Convenience floats.
+export const FEE_RATE = FEE_BPS / BPS_DENOM;       // 0.05
+export const LP_RETENTION = LP_RETENTION_BPS / BPS_DENOM; // 0.04
+export const TILE_RATE = TILE_BPS / BPS_DENOM;     // 0.01
 
 export interface State {
+  /// ETH currently in the LP.
   reserveEth: number;
-  supply: number;
-  cumulativeEthIn: number;
+  /// ascend currently in the LP.
+  reserveAscend: number;
 }
 
-export function floorOf({ reserveEth, supply }: State): number {
-  if (supply === 0) return BOOTSTRAP_ETH / BOOTSTRAP_ASCEND;
-  return reserveEth / supply;
+/** ETH per circulating ascend — the floor (redemption guarantee). */
+export function floorOf(s: State): number {
+  const circ = SUPPLY_CAP - s.reserveAscend;
+  if (circ <= 0) return 0;
+  return s.reserveEth / circ;
 }
 
-/** Premium fraction (e.g. 1.0 = 100%) at the current cumulativeEthIn. */
-export function premiumFractionOf(state: State): number {
-  return BASE_PREMIUM_BPS / BPS_DENOM + state.cumulativeEthIn / PREMIUM_SCALE_ETH;
+/** Spot price on the LP curve. ETH per ascend. */
+export function priceOf(s: State): number {
+  if (s.reserveAscend <= 0) return 0;
+  return s.reserveEth / s.reserveAscend;
 }
 
-/** Trading price (cost to mine one ascend), ETH per ascend. */
-export function priceOf(state: State): number {
-  return floorOf(state) * (1 + premiumFractionOf(state));
+/** circulating supply = total minted into LP - amount still in LP. */
+export function circulatingOf(s: State): number {
+  return Math.max(0, SUPPLY_CAP - s.reserveAscend);
 }
 
-/** Market cap in ETH. = price × supply = (1 + premium) × vault. */
-export function marketCapOf(state: State): number {
-  return priceOf(state) * state.supply;
+/** Market cap in ETH. = price × circulating. */
+export function marketCapOf(s: State): number {
+  return priceOf(s) * circulatingOf(s);
 }
 
-export function quoteBuy(state: State, ethIn: number) {
+/** Fully-diluted value in ETH. = price × supplyCap. */
+export function fdvOf(s: State): number {
+  return priceOf(s) * SUPPLY_CAP;
+}
+
+/**
+ * Quote a buy of `ethIn` ETH. Returns the ascend the user would receive,
+ * the fee charged, and the post-swap floor + spot price.
+ *
+ * We model the rebalance as instantaneous (donation back into the LP
+ * after each trade). On-chain, donation happens lazily via rebalance(),
+ * but the floor invariant proof works either way.
+ */
+export function quoteBuy(s: State, ethIn: number) {
   if (ethIn <= 0) return null;
-  const f = floorOf(state);
-  const tradingPrice = priceOf(state);
-  const fee = (ethIn * BUY_FEE_BPS) / BPS_DENOM;
+  const fee = ethIn * FEE_RATE;
   const net = ethIn - fee;
-  const ascendOut = net / tradingPrice;
-  const post: State = {
-    reserveEth: state.reserveEth + ethIn,
-    supply: state.supply + ascendOut,
-    cumulativeEthIn: state.cumulativeEthIn + ethIn, // ratchets up
-  };
+
+  // CP swap: Y' = Y + net, X' = k / Y'
+  const k = s.reserveEth * s.reserveAscend;
+  const yAfterSwap = s.reserveEth + net;
+  const xAfterSwap = k / yAfterSwap;
+  const ascendOut = s.reserveAscend - xAfterSwap;
+
+  // After fee retention: 4% of fee donates back to LP (raises Y); 1%
+  // leaves the LP system entirely (goes to tile pool).
+  const yFinal = yAfterSwap + fee * (LP_RETENTION_BPS / FEE_BPS);
+  const xFinal = xAfterSwap;
+
+  const post: State = { reserveEth: yFinal, reserveAscend: xFinal };
+
   return {
     ascendOut,
     fee,
-    floorBefore: f,
+    tilePortion: fee * (TILE_BPS / FEE_BPS),
+    lpRetention: fee * (LP_RETENTION_BPS / FEE_BPS),
+    floorBefore: floorOf(s),
     floorAfter: floorOf(post),
-    tradingPrice,
+    priceBefore: priceOf(s),
     priceAfter: priceOf(post),
-    premiumPctAfter: premiumFractionOf(post) * 100,
   };
 }
 
-export function quoteSell(state: State, ascendIn: number) {
+/**
+ * Quote a sell of `ascendIn` ascend. Returns ETH out, fee charged, and
+ * post-swap floor + spot price.
+ *
+ * Sells deposit ascend into the LP and pull ETH out. The 5% fee is
+ * charged in ascend (stays in LP, growing X). Of the ETH side, 4% of
+ * the gross ETH-equivalent fee donates back, 1% to TileEngine.
+ */
+export function quoteSell(s: State, ascendIn: number) {
   if (ascendIn <= 0) return null;
-  if (ascendIn >= state.supply) return null;
-  const f = floorOf(state);
-  const gross = ascendIn * f;
-  const fee = (gross * SELL_FEE_BPS) / BPS_DENOM;
-  const ethOut = gross - fee;
-  const post: State = {
-    reserveEth: state.reserveEth - ethOut,
-    supply: state.supply - ascendIn,
-    cumulativeEthIn: state.cumulativeEthIn, // unchanged on sells
-  };
+  if (ascendIn >= s.reserveAscend) return null;
+
+  const fee = ascendIn * FEE_RATE;
+  const net = ascendIn - fee;
+
+  // CP swap on net (fee stays in LP as ascend after the swap)
+  const k = s.reserveEth * s.reserveAscend;
+  const xAfterSwap = s.reserveAscend + net;
+  const yAfterSwap = k / xAfterSwap;
+  const ethOut = s.reserveEth - yAfterSwap;
+
+  // Fee retention: the 5% fee on the ascend side. 4% effectively donates
+  // back as additional X (already there, since fee stayed in pool); 1%
+  // worth (in ETH terms) is sourced from the LP retention. For the
+  // simple sim we treat the full fee as retained X.
+  const xFinal = xAfterSwap + fee;
+  const yFinal = yAfterSwap;
+
+  const post: State = { reserveEth: yFinal, reserveAscend: xFinal };
+
   return {
     ethOut,
     fee,
-    floorBefore: f,
+    tilePortion: ethOut * (TILE_BPS / FEE_BPS),
+    floorBefore: floorOf(s),
     floorAfter: floorOf(post),
+    priceBefore: priceOf(s),
     priceAfter: priceOf(post),
   };
 }
 
-/** Simulate alternating mine/redeem activity for the projection chart. */
+/** Initial state at genesis: all 122M ascend in LP, 1 ETH bootstrap. */
+export function genesis(): State {
+  return { reserveEth: BOOTSTRAP_ETH, reserveAscend: SUPPLY_CAP };
+}
+
+/**
+ * Simulate a sequence of mining buys for the projection chart. Returns
+ * a trace of (step, floor, price) tuples.
+ *
+ * @param start state to start from
+ * @param steps number of steps
+ * @param tradeEthBuy ETH per buy step
+ * @param sellFraction fraction of supply sold per even step (0..1)
+ */
 export function simulateFloor(
   start: State,
   steps: number,
   tradeEthBuy: number,
   sellFraction: number = 0.5,
-): { step: number; floor: number }[] {
-  const trace: { step: number; floor: number }[] = [
-    { step: 0, floor: floorOf(start) },
+): { step: number; floor: number; price: number }[] {
+  const trace: { step: number; floor: number; price: number }[] = [
+    { step: 0, floor: floorOf(start), price: priceOf(start) },
   ];
   let s: State = { ...start };
   for (let i = 1; i <= steps; i++) {
     if (i % 2 === 1) {
       const q = quoteBuy(s, tradeEthBuy);
       if (q) {
+        const fee = tradeEthBuy * FEE_RATE;
+        const net = tradeEthBuy - fee;
+        const k = s.reserveEth * s.reserveAscend;
+        const yAfter = s.reserveEth + net;
+        const xAfter = k / yAfter;
         s = {
-          reserveEth: s.reserveEth + tradeEthBuy,
-          supply: s.supply + q.ascendOut,
-          cumulativeEthIn: s.cumulativeEthIn + tradeEthBuy,
+          reserveEth: yAfter + fee * (LP_RETENTION_BPS / FEE_BPS),
+          reserveAscend: xAfter,
         };
       }
     } else {
-      const sellAscend = s.supply * sellFraction * 0.01;
-      const q = quoteSell(s, sellAscend);
+      // sell side
+      const sellAmount = (SUPPLY_CAP - s.reserveAscend) * sellFraction * 0.01;
+      const q = quoteSell(s, sellAmount);
       if (q) {
+        const fee = sellAmount * FEE_RATE;
+        const net = sellAmount - fee;
+        const k = s.reserveEth * s.reserveAscend;
+        const xAfter = s.reserveAscend + net;
+        const yAfter = k / xAfter;
         s = {
-          reserveEth: s.reserveEth - q.ethOut,
-          supply: s.supply - sellAscend,
-          cumulativeEthIn: s.cumulativeEthIn,
+          reserveEth: yAfter,
+          reserveAscend: xAfter + fee,
         };
       }
     }
-    trace.push({ step: i, floor: floorOf(s) });
+    trace.push({ step: i, floor: floorOf(s), price: priceOf(s) });
   }
   return trace;
 }

@@ -24,7 +24,7 @@ const ETH_USD = 2_350;
 export function Tiles() {
   const { isConnected } = useAccount();
   const state = useTilesState();
-  const { claim, pendingTile, pending, isSuccess } = useClaimTile();
+  const { claim, pendingTile, pending, isSuccess, reveal, dismissReveal } = useClaimTile();
 
   const epochLabel = useMemo(() => {
     if (!state.configured) return "demo";
@@ -148,7 +148,7 @@ export function Tiles() {
       </p>
 
       <AnimatePresence>
-        {isSuccess && (
+        {isSuccess && !reveal && (
           <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -156,6 +156,53 @@ export function Tiles() {
             className="mt-3 text-[11px] text-emerald-400"
           >
             tile flipped. reward sent to your wallet.
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {reveal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 backdrop-blur-sm"
+            onClick={dismissReveal}
+          >
+            <motion.div
+              initial={{ scale: 0.85, rotateY: -90 }}
+              animate={{ scale: 1, rotateY: 0 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="panel mx-6 max-w-sm w-full p-8 text-center"
+            >
+              <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+                Tile #{reveal.tileIdx} flipped
+              </div>
+              <div className="mt-4 font-mono text-[64px] leading-none text-accent">
+                ×{reveal.multiplier}
+              </div>
+              <div className="mt-3 text-[11px] uppercase tracking-widest2 text-ash">
+                multiplier
+              </div>
+              <div className="hairline my-6" />
+              <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+                reward
+              </div>
+              <div className="mt-2 font-mono tabular text-[28px] text-bone">
+                {fmtEth(reveal.rewardEth)}
+              </div>
+              <div className="mt-1 font-mono text-[11px] text-ash">
+                ≈ {fmtUsd(reveal.rewardEth * ETH_USD)} · sent to your wallet
+              </div>
+              <button
+                onClick={dismissReveal}
+                className="mt-7 w-full rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-[11px] font-medium uppercase tracking-widest text-accent transition hover:bg-accent/15"
+              >
+                close
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

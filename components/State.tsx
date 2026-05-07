@@ -14,12 +14,14 @@ export function State() {
     floorEth,
     priceEth,
     marketCapEth,
-    premiumPct,
+    fdvEth,
     reserveEth,
-    supply,
+    circulating,
     isDemo,
     isLoading,
   } = useAscendState();
+
+  const upside = floorEth > 0 ? priceEth / floorEth : 0;
 
   return (
     <section className="mt-10">
@@ -44,25 +46,33 @@ export function State() {
         <Cell
           label="Price"
           value={`${fmtPrice(priceEth)} Ξ`}
-          hint={`mining cost · ${premiumPct.toFixed(0)}% premium over floor`}
+          hint="spot price on the LP curve"
           emphasis
         />
         <Cell
           label="Floor"
           value={`${fmtPrice(floorEth)} Ξ`}
-          hint="redemption value · vault / supply"
+          hint="redemption guarantee · LP-backed"
         />
         <Cell
           label="Market cap"
           value={`${fmt(marketCapEth, 3)} Ξ`}
-          hint="price × issued"
+          hint="price × circulating"
         />
-        <Cell label="Vault" value={`${fmt(reserveEth, 4)} Ξ`} hint="ETH backing the floor" />
-        <Cell label="Issued" value={fmt(supply, 2)} hint="ascend mined into existence" />
         <Cell
-          label="Premium"
-          value={`+${premiumPct.toFixed(0)}%`}
-          hint="ratchets up with every mine — never resets"
+          label="LP depth"
+          value={`${fmt(reserveEth, 4)} Ξ`}
+          hint="real liquidity, only grows"
+        />
+        <Cell
+          label="Circulating"
+          value={fmt(circulating, 2)}
+          hint="ascend mined out of the LP"
+        />
+        <Cell
+          label="FDV"
+          value={`${fmt(fdvEth, 3)} Ξ`}
+          hint={`upside-to-floor: ${upside > 0 ? upside.toFixed(1) : "—"}×`}
         />
       </motion.div>
     </section>

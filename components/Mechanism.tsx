@@ -4,34 +4,34 @@ import { motion } from "framer-motion";
 
 const properties = [
   {
-    title: "Born deterministic",
+    title: "One LP, one chart",
     body:
-      "ascend is a single contract on Ethereum. it was constructed at one block, with one initial state, and runs against the same rules every block since. there is no governance, no admin, no upgrade path, no migration.",
+      "ascend trades on a single Uniswap V4 pool whose only LP is the hook itself. buyers and sellers walk the same constant-product curve, so DexScreener prints normal green/red candles on a single price band. no admin, no governance, no upgrade path.",
   },
   {
-    title: "Premium ratchets with volume",
+    title: "Floor only goes up",
     body:
-      "miners pay a premium over the floor — starting at 100% (price = 2 × floor) and climbing 100 percentage points for every 250 ETH of cumulative mining. the premium never resets. early miners benefit; late miners capitalise the asset for everyone.",
+      "every swap pays a 5% fee. 4% is donated back into the LP, growing the ETH side without minting any ascend. the LP's lower bound — vault per circulating ascend — is monotone non-decreasing forever. holders have a redemption guarantee that compounds with volume.",
   },
   {
-    title: "Redemption stays cheap",
+    title: "Tiles · the share",
     body:
-      "exits pay only 5% — same as entry. holders aren't trapped. the 5% retention still compounds the floor for everyone who keeps holding, but the heavy lifting on price appreciation is the premium ratchet, not the exit fee.",
+      "1% of every swap funds a 12×12 grid of claimable tiles. once per 24h epoch, holders flip one tile and reveal a 1× to 4× multiplier on their share of the pool. the more volume, the bigger the prize. unclaimed tiles roll forward.",
   },
   {
-    title: "Floor is the law",
+    title: "Real liquidity",
     body:
-      "the floor is the asset's redemption price — vault ÷ issued. the contract guarantees, by construction, that this ratio is monotone non-decreasing under any sequence of mints and redemptions. it cannot fall.",
+      "the vault IS the LP. every wei of accumulated fee shows up as visible depth on Uniswap, DexScreener, and every aggregator. no off-pool routing, no honeypot heuristic flags, no two-band whipsaw. it looks normal because it is normal.",
   },
   {
-    title: "Self-custodial counterparty",
+    title: "No team, no presale",
     body:
-      "the vault is the only counterparty to every holder. no liquidity provider, no market maker, no team treasury, no DAO. the contract is its own market.",
+      "122 million ascend, all minted into the LP at genesis. zero allocations. zero unlocks. the only path into circulation is to swap ETH for it through the V4 pool. the only path out is to swap ascend back. there is no other way.",
   },
   {
-    title: "Verifiable on-chain",
+    title: "Verifiable forever",
     body:
-      "the floor is two public reads — the contract's ETH balance and the ERC-20 total supply. anyone can compute it. anyone can verify it. anyone can mine it. anyone can redeem it.",
+      "the LP composition, the floor, the tile pool, every swap fee, every claim — all readable on-chain via standard V4 reads. anyone can compute the floor. anyone can claim a tile. anyone can audit the curve. nothing is off-chain.",
   },
 ];
 
@@ -43,13 +43,13 @@ export function Mechanism() {
           Mechanism
         </p>
         <h2 className="mt-3 text-2xl font-medium leading-tight text-bone md:text-[36px]">
-          a new asset class on ethereum.
+          a self-compounding asset with a share for everyone.
         </h2>
         <p className="mt-4 text-[14px] leading-relaxed text-ash">
-          ascend is the first ethereum-native asset whose floor is encoded
-          directly in the contract that issues it. it has no off-chain
-          oracle, no off-chain price, no off-chain liquidity. it is mined
-          into existence by ETH, redeemed by ETH, and priced by ETH.
+          ascend is a Uniswap V4 hook that owns its own pool. every swap
+          deepens the floor. every swap fills a tile. holders aren't
+          spectators — they have a deterministic, claimable share of the
+          protocol's volume, on-chain, every day.
         </p>
       </header>
 

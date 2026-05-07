@@ -29,10 +29,24 @@ export function Trade() {
     if (!Number.isFinite(a) || a <= 0) return null;
     if (isBuy) {
       const q = quoteBuy(state, a);
-      return q ? { received: q.ascendOut, fee: q.fee, floorAfter: q.floorAfter } : null;
+      return q
+        ? {
+            received: q.ascendOut,
+            fee: q.fee,
+            floorAfter: q.floorAfter,
+            priceAfter: q.priceAfter,
+          }
+        : null;
     }
     const q = quoteSell(state, a);
-    return q ? { received: q.ethOut, fee: q.fee, floorAfter: q.floorAfter } : null;
+    return q
+      ? {
+          received: q.ethOut,
+          fee: q.fee,
+          floorAfter: q.floorAfter,
+          priceAfter: q.priceAfter,
+        }
+      : null;
   }, [amount, isBuy, state]);
 
   return (
@@ -149,8 +163,8 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? `you mine new ascend at a ${state.premiumPct.toFixed(0)}% premium over the floor. the premium ratchets up by 100% per 250 ETH of cumulative mining and never resets. 5% of your ETH is the mining fee; the rest stays in the vault and compounds the floor.`
-          : "you burn ascend; the vault returns ETH at the current floor. 5% of your gross stays in the vault, compounding the floor for every remaining holder."}
+          ? "you swap ETH for ascend on the V4 pool. 5% fee: 4% deepens the LP (raises the floor for every holder), 1% funds the tile-flip pool. same curve, same price, both sides — no spread, no special routing."
+          : "you swap ascend for ETH on the same V4 pool. 5% fee: 4% deepens the LP, 1% funds the tile pool. selling lifts the floor too — the fee compounds in either direction."}
       </p>
     </section>
   );

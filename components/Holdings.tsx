@@ -39,7 +39,7 @@ export function Holdings() {
 
   const valueEth = balance * state.floorEth;
   const valueUsd = valueEth * ETH_PRICE_USD;
-  const sharePct = state.supply > 0 ? (balance / state.supply) * 100 : 0;
+  const sharePct = state.circulating > 0 ? (balance / state.circulating) * 100 : 0;
   const perSquareEth = balance / TOTAL_SQUARES;
   const perSquareUsd = perSquareEth * ETH_PRICE_USD;
 
@@ -112,7 +112,7 @@ export function Holdings() {
         <Stat
           label="Share of supply"
           value={`${sharePct < 0.0001 && sharePct > 0 ? sharePct.toExponential(2) : sharePct.toFixed(4)}%`}
-          hint={`of ${state.supply.toLocaleString(undefined, { maximumFractionDigits: 2 })} total`}
+          hint={`of ${state.circulating.toLocaleString(undefined, { maximumFractionDigits: 2 })} circulating`}
         />
       </div>
 
