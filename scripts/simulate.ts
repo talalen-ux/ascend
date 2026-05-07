@@ -10,8 +10,8 @@
  *   initial supply  : 1 ascend
  *   initial floor   : 1 ETH / ascend
  *   base premium    : 100%
- *   premium scale   : 500 ETH
- *   mining fee      : 5%   redemption fee : 15%   (retained in vault)
+ *   premium scale   : 250 ETH
+ *   mining fee      : 5%   redemption fee : 5%   (retained in vault)
  *
  * Two scenarios:
  *   (A) sequential   : all buys land first, then all sells
@@ -168,9 +168,9 @@ console.log(`  ETH price          : $${ETH_PRICE_USD.toLocaleString()}`);
 console.log(`  initial vault      : ${initial.reserveEth} ETH`);
 console.log(`  initial supply     : ${initial.supply} ascend`);
 console.log(`  initial floor      : ${initial.reserveEth / initial.supply} ETH/ascend`);
-console.log(`  fee rates          : 5% mining / 15% redemption (retained in vault)`);
+console.log(`  fee rates          : 5% mining / 5% redemption (retained in vault)`);
 console.log(`  base premium       : 100% (price = 2 × floor at genesis)`);
-console.log(`  premium scale      : +100% per 500 ETH of cumulative mining`);
+console.log(`  premium scale      : +100% per 250 ETH of cumulative mining`);
 console.log(`  trade granularity  : 200 buys + up to 200 sells\n`);
 
 sequential(500_000, 400_000);

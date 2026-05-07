@@ -94,7 +94,7 @@ export function Trade() {
           small
         />
         <Row
-          label={isBuy ? "Mining fee (5%)" : "Redemption fee (15%)"}
+          label={isBuy ? "Mining fee (5%)" : "Redemption fee (5%)"}
           value={quote?.fee ?? 0}
           suffix="Ξ"
           muted
@@ -149,8 +149,8 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? `you mine new ascend at a ${state.premiumPct.toFixed(0)}% premium over the floor. the premium ratchets up by 100% per 500 ETH of cumulative mining and never resets. 5% of your ETH is the mining fee; the rest stays in the vault and compounds the floor.`
-          : "you burn ascend; the vault returns ETH at the current floor. 15% of your gross stays in the vault, compounding the floor for every remaining holder."}
+          ? `you mine new ascend at a ${state.premiumPct.toFixed(0)}% premium over the floor. the premium ratchets up by 100% per 250 ETH of cumulative mining and never resets. 5% of your ETH is the mining fee; the rest stays in the vault and compounds the floor.`
+          : "you burn ascend; the vault returns ETH at the current floor. 5% of your gross stays in the vault, compounding the floor for every remaining holder."}
       </p>
     </section>
   );

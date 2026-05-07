@@ -254,8 +254,8 @@ contract AscendHookTest is Test, Deployers {
         vm.prank(alice);
         router.buy{value: 1 ether}(0, alice);
         uint256 p1 = hook.premiumBps();
-        // BASE 10_000 + 1e18 wei * 10_000 / 500e18 = 10_000 + 20 = 10_020
-        assertEq(p1, p0 + 20, "premium did not ratchet");
+        // BASE 10_000 + 1e18 wei * 10_000 / 250e18 = 10_000 + 40 = 10_040
+        assertEq(p1, p0 + 40, "premium did not ratchet");
         assertEq(hook.cumulativeEthIn(), 1 ether);
     }
 
@@ -284,14 +284,14 @@ contract AscendHookTest is Test, Deployers {
         assertApproxEqRel(hook.marketCap(), expected, 1e15);
     }
 
-    function test_redemptionFeeIsFifteenPercent() public {
+    function test_redemptionFeeIsFivePercent() public {
         vm.prank(alice);
         router.buy{value: 1 ether}(0, alice);
         uint256 ascBal = ascend.balanceOf(alice);
 
         (uint256 quoted, uint256 fee) = hook.quoteSell(ascBal);
         uint256 gross = (ascBal * address(hook).balance) / ascend.totalSupply();
-        assertEq(fee, (gross * 15) / 100);
+        assertEq(fee, (gross * 5) / 100);
 
         uint256 ethBefore = alice.balance;
         vm.startPrank(alice);

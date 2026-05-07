@@ -17,9 +17,9 @@
  */
 
 export const BUY_FEE_BPS = 500;
-export const SELL_FEE_BPS = 1500;
+export const SELL_FEE_BPS = 500;
 export const BASE_PREMIUM_BPS = 10_000; // 100% base — price = 2 · floor at genesis
-export const PREMIUM_SCALE_ETH = 500; // premium gains BASE per 500 ETH of cumulative mining
+export const PREMIUM_SCALE_ETH = 250; // premium gains BASE per 250 ETH of cumulative mining
 export const BPS_DENOM = 10_000;
 export const BOOTSTRAP_ETH = 0.001;
 export const BOOTSTRAP_ASCEND = 1;

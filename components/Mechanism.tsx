@@ -11,12 +11,12 @@ const properties = [
   {
     title: "Premium ratchets with volume",
     body:
-      "miners pay a premium over the floor — starting at 100% (price = 2 × floor) and climbing 100 percentage points for every 500 ETH of cumulative mining. the premium never resets. early miners benefit; late miners capitalise the asset for everyone.",
+      "miners pay a premium over the floor — starting at 100% (price = 2 × floor) and climbing 100 percentage points for every 250 ETH of cumulative mining. the premium never resets. early miners benefit; late miners capitalise the asset for everyone.",
   },
   {
-    title: "Redemption is taxed",
+    title: "Redemption stays cheap",
     body:
-      "redemption pays 85% of the floor; the remaining 15% stays in the vault and compounds the floor for everyone who keeps holding. round-tripping costs north of 50% on a flat floor — the asset is built to be held, not flipped.",
+      "exits pay only 5% — same as entry. holders aren't trapped. the 5% retention still compounds the floor for everyone who keeps holding, but the heavy lifting on price appreciation is the premium ratchet, not the exit fee.",
   },
   {
     title: "Floor is the law",

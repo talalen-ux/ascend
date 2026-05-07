@@ -49,13 +49,13 @@ contract AscendHook is BaseHook {
     // immutables and parameters
     // -----------------------------------------------------------------
 
-    /// @notice 5% mining fee, 15% redemption fee, expressed in basis points.
-    ///         Both retentions stay in the vault permanently as additional
-    ///         backing for every remaining holder. The asymmetry is by
-    ///         design — mining is cheap (the asset wants miners), redemption
-    ///         is taxed (the asset compounds for the patient).
+    /// @notice 5% mining fee, 5% redemption fee, expressed in basis points.
+    ///         Symmetric — entry and exit cost the same. Both retentions
+    ///         stay in the vault permanently as additional backing for
+    ///         every remaining holder. The MC growth driver is the premium
+    ///         ratchet (below), not the redemption fee.
     uint16 public constant BUY_FEE_BPS = 500;
-    uint16 public constant SELL_FEE_BPS = 1500;
+    uint16 public constant SELL_FEE_BPS = 500;
     uint16 public constant BPS_DENOM = 10_000;
 
     /// @notice Mining premium. At every block:
@@ -73,18 +73,18 @@ contract AscendHook is BaseHook {
     ///
     ///         PREMIUM_SCALE_WEI is the half-life: the premium gains
     ///         BASE_PREMIUM_BPS per PREMIUM_SCALE_WEI of cumulative mining.
-    ///         At S = 500 ETH and base = 100%:
+    ///         At S = 250 ETH and base = 100%:
     ///           cumE =   0  ETH → premium = 100% → price = 2.0 · floor
-    ///           cumE = 500  ETH → premium = 200% → price = 3.0 · floor
-    ///           cumE = 1k   ETH → premium = 300% → price = 4.0 · floor
-    ///           cumE = 10k  ETH → premium = 2100% → price = 22 · floor
+    ///           cumE = 250  ETH → premium = 200% → price = 3.0 · floor
+    ///           cumE = 500  ETH → premium = 300% → price = 4.0 · floor
+    ///           cumE = 5k   ETH → premium = 2100% → price = 22 · floor
     ///
     ///         Redemption ignores the premium: sellers always exit at the
-    ///         floor (minus the 15% redemption fee). The premium is the
+    ///         floor (minus the 5% redemption fee). The premium is the
     ///         "second floor" that markets capitalize separately from the
     ///         redemption guarantee.
     uint16 public constant BASE_PREMIUM_BPS = 10_000;
-    uint256 public constant PREMIUM_SCALE_WEI = 500 ether;
+    uint256 public constant PREMIUM_SCALE_WEI = 250 ether;
 
     /// @notice Bootstrap. Constructor enforces these exactly.
     ///         The bootstrap ETH and the bootstrap ascend (locked at the hook

@@ -30,14 +30,15 @@ export default function Whitepaper() {
           only source of liquidity. the trading price is{" "}
           <code>floor · (1 + premium)</code>, where the premium ratchets up
           deterministically with all-time mining inflow:{" "}
-          <code>premium = 100% + cumulativeEthIn / 500 ETH × 100%</code>.
-          mining retains 5% of input and redemption retains 15% of gross —
-          both flows, plus the premium itself, stay in the vault permanently
-          and deepen the backing for every remaining holder. floor and
-          premium are both monotone non-decreasing forever. market cap =
-          price · supply = <code>(1 + premium) · vault</code> compounds
-          super-linearly with cumulative volume. there is no admin, no
-          upgrade, no migration, no withdraw.
+          <code>premium = 100% + cumulativeEthIn / 250 ETH × 100%</code>.
+          mining and redemption each retain a symmetric 5% — both flows,
+          plus the premium itself, stay in the vault permanently and deepen
+          the backing for every remaining holder. floor and premium are
+          both monotone non-decreasing forever. market cap = price · supply
+          = <code>(1 + premium) · vault</code> compounds super-linearly with
+          cumulative volume, driven by the premium ratchet rather than the
+          exit fee. there is no admin, no upgrade, no migration, no
+          withdraw.
         </p>
         <p>
           the floor is defined as{" "}
@@ -72,8 +73,8 @@ export default function Whitepaper() {
           a redeemer submits <code>r</code> ascend to burn. the hook computes
           <code className="ml-2"> floor₀ = R / S</code>,
           <code className="ml-2"> gross = r · floor₀</code>,
-          <code className="ml-2"> fee = gross · 0.15</code>,
-          <code className="ml-2"> ethOut = gross · 0.85</code>; burns
+          <code className="ml-2"> fee = gross · 0.05</code>,
+          <code className="ml-2"> ethOut = gross · 0.95</code>; burns
           <code className="ml-2"> r</code> ascend from the caller; transfers
           <code className="ml-2"> ethOut</code> to the caller. the
           <code className="mx-1">fee</code> remains in the vault.
@@ -120,13 +121,13 @@ export default function Whitepaper() {
           <code>floor&rsquo; / floor &gt; 1</code>.
         </p>
         <p className="mt-3 font-mono text-[12px] text-bone/80">
-          R&rsquo; = R − 0.85 · r · (R/S) = R · (S − 0.85·r) / S
+          R&rsquo; = R − 0.95 · r · (R/S) = R · (S − 0.95·r) / S
           <br />
           S&rsquo; = S − r
           <br />
-          floor&rsquo; / floor = (S − 0.85·r) / (S − r) &gt; 1
+          floor&rsquo; / floor = (S − 0.95·r) / (S − r) &gt; 1
           <br />
-          since 0.85·r &lt; r ⟹ S − 0.85·r &gt; S − r ∎
+          since 0.95·r &lt; r ⟹ S − 0.95·r &gt; S − r ∎
         </p>
 
         <h3 className="mt-8 text-[14px] font-medium text-bone">corollary · monotone non-decreasing under any sequence</h3>
@@ -146,7 +147,7 @@ export default function Whitepaper() {
           hook itself. proof: the hook&rsquo;s balance equals every wei
           ever paid in by mining minus every wei ever paid out as redemption.
           a redemption of <code>r &lt; S</code> pays out{" "}
-          <code>0.85 · r · R / S &lt; R</code>. so balance never goes
+          <code>0.95 · r · R / S &lt; R</code>. so balance never goes
           negative, and after any redemption the balance per non-bootstrap
           ascend is at least the prior floor (by theorem 2). ∎
         </p>
@@ -163,13 +164,16 @@ export default function Whitepaper() {
         </ul>
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.2 mev considerations</h3>
         <p>
-          the hook has no slippage in the AMM sense — mining and redemption
-          prices are both pinned to the on-chain <code>floor</code>. a
-          sandwich attack would require the attacker to mine in front of the
-          victim and redeem behind, but the round-trip 20% friction (5%
-          mining + 15% redemption) makes any sandwich strictly unprofitable
-          for slippage gains less than 20%, and no single mine on this hook
-          creates slippage in excess of 20%.
+          the hook has no slippage in the AMM sense — mining is pinned to
+          <code className="ml-1">floor · (1 + premium)</code> and redemption
+          to <code>floor</code>, both deterministic from on-chain state. a
+          sandwich attack would have to mine in front of a victim and redeem
+          behind, but the round-trip cost includes the 10% retention (5%
+          mining + 5% redemption) <em>plus</em> the premium spread —{" "}
+          <code>1 + premium</code> on entry, only <code>1</code> on exit.
+          at the genesis premium of +100%, that&rsquo;s already a structural
+          ~57% loss on a flat floor. as the premium ratchets up with
+          cumulative volume, sandwich profitability falls further.
         </p>
         <h3 className="mt-6 text-[14px] font-medium text-bone">5.3 reentrancy</h3>
         <p>
@@ -227,17 +231,17 @@ export default function Whitepaper() {
       <Section title="7 · what the floor does not promise">
         <ul className="mt-2 list-disc space-y-1 pl-6">
           <li>
-            the floor is the redemption price <em>before</em> the 15%
-            redemption fee. a redeemer receives <code>0.85 · floor</code>.
-            the floor itself is the contract&rsquo;s internal accounting
-            datum and the inputs to it (vault balance, total supply) are
-            both public.
+            the floor is the redemption price <em>before</em> the 5%
+            redemption fee. a redeemer receives <code>0.95 · floor</code>.
+            the inputs to floor (vault balance, total supply) are both
+            public.
           </li>
           <li>
-            a round-trip from mine to redeem costs ~20% on a flat floor.
-            break-even requires the floor to compound by ~20% (driven by
-            other holders&rsquo; volume) during your hold. the asset
-            rewards holding, not flipping.
+            mining costs <code>(1 + premium) · floor</code>; redemption pays{" "}
+            <code>0.95 · floor</code>. on a flat floor the round-trip cost
+            is approximately <code>1 − 0.95 / (1 + premium)</code>: ~52% at
+            the genesis premium of +100%, growing as the premium ratchets.
+            the asset rewards holding, not flipping.
           </li>
           <li>
             the floor is denominated in ETH. it does not promise USD
