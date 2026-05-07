@@ -2,29 +2,38 @@
 
 This document is the source of truth for the v2 contract implementation.
 All numerical parameters, invariants, and invariant proofs are committed
-here. Implementation lives at `contracts/src/AscendHookV2.sol`.
+here. Implementation lives at `contracts/src/AscendHookV2.sol` and
+`contracts/src/TileEngine.sol`.
 
 ## one-line summary
 
-A V4 hook that owns a full-range LP, retains 5% of every swap as
-ETH-side depth, and enforces that the LP's lower tick (= the floor) is
-monotone non-decreasing. Single price for buyers and sellers. Real
-liquidity. Single-band chart.
+A V4 hook that owns a full-range LP, retains 4% of every swap as
+ETH-side depth, channels 1% to a tile-flipping reward game, and
+enforces that the LP's lower tick (= the floor) is monotone
+non-decreasing. Single price for buyers and sellers. Real liquidity.
+Single-band chart. Holders earn from a flippable 12×12 tile grid that
+pays out 1×–4× multiples of the accumulated reward share.
 
 ## locked parameters
 
-| symbol               | value           | notes                                                    |
-|----------------------|-----------------|----------------------------------------------------------|
-| `SUPPLY_CAP`         | `21_000_000`    | hard cap, all minted at genesis                          |
-| `BOOTSTRAP_ETH`      | `1 ether`       | constructor enforces exact value                         |
-| `FEE_BPS`            | `500`           | 5% on both sides, retained as ETH-side depth             |
-| `BPS_DENOM`          | `10_000`        |                                                          |
-| `LP_RANGE`           | full range      | tickLower = `MIN_TICK`, tickUpper = `MAX_TICK`           |
-| `TICK_SPACING`       | `60`            | standard for non-fee-tier pools                          |
-| pool `currency0`     | `address(0)`    | native ETH                                               |
-| pool `currency1`     | ascend ERC-20   | sole minter is the hook                                  |
-| pool `fee`           | `0`             | hook charges its own fee                                 |
-| `REBALANCE_GUARD`    | EIP-1153 tload  | re-entrancy guard around the rebalance routine           |
+| symbol                | value           | notes                                                    |
+|-----------------------|-----------------|----------------------------------------------------------|
+| `SUPPLY_CAP`          | `122_000_000`   | hard cap, all minted at genesis (122M ascend)            |
+| `BOOTSTRAP_ETH`       | `1 ether`       | constructor enforces exact value                         |
+| `FEE_BPS`             | `500`           | 5% total on both sides                                   |
+| `LP_RETENTION_BPS`    | `400`           | 4% retained as ETH-side depth (compounds floor)          |
+| `TILE_BPS`            | `100`           | 1% routed to TileEngine reward pool                      |
+| `BPS_DENOM`           | `10_000`        |                                                          |
+| `LP_RANGE`            | full range      | tickLower = `MIN_TICK`, tickUpper = `MAX_TICK`           |
+| `TICK_SPACING`        | `60`            | standard for non-fee-tier pools                          |
+| pool `currency0`      | `address(0)`    | native ETH                                               |
+| pool `currency1`      | ascend ERC-20   | sole minter is the hook                                  |
+| pool `fee`            | dynamic         | hook charges its own fee via OVERRIDE flag               |
+| `REBALANCE_THRESHOLD` | `0.01 ether`    | min retained-fee buffer before re-LP'ing                 |
+| `REBALANCE_GUARD`     | EIP-1153 tload  | re-entrancy guard around the rebalance routine           |
+| `TILE_GRID`           | `144` (12×12)   | tiles per epoch                                          |
+| `EPOCH_LENGTH`        | `24 hours`      | tiles refresh at the start of each epoch                 |
+| `MIN_HOLDING`         | `1e18`          | 1 ascend minimum balance to claim a tile                 |
 
 The `LP_RANGE = full range` choice is justified in
 `scripts/v2concentration.ts`: tighter ranges add risk of LP exhaustion
@@ -231,6 +240,196 @@ The one MEV vector worth noting: a sufficiently large buy could push
 price up the curve, then the next-block buy gets a less favorable
 price. Standard CP MEV; no v2-specific exposure.
 
+## TileEngine — the unique selling point
+
+The tile game is the on-chain expression of "every holder gets a slice
+of the protocol's trading volume." It runs in a separate
+`TileEngine.sol` contract that is funded entirely by the 1% fee slice
+the hook routes on every swap.
+
+### the loop
+
+```
+1. Every swap pays a 5% fee.
+   - 4% retained in the LP as ETH-side depth (floor lift)
+   - 1% pushed to TileEngine.depositReward{value: ...}() as native ETH
+2. TileEngine accumulates the ETH into the current epoch's reward pool.
+3. At the start of every 24h epoch, 144 tiles become claimable.
+4. Any address with ≥ 1 ascend can claim ONE tile per epoch.
+5. claimTile(uint256 idx) flips the tile:
+   - Pseudorandom multiplier ∈ {1, 2, 3, 4} drawn from
+     keccak256(blockhash, idx, msg.sender, epoch)
+   - Reward = (epoch_pool / 144) × multiplier
+   - Capped by remaining pool to ensure solvency
+6. Unclaimed tiles' shares roll into next epoch's pool.
+```
+
+### multiplier distribution
+
+The 4-bit nibble drawn from the random word maps to multiplier with
+weights tuned so the expected payout per tile equals exactly
+`epoch_pool / 144`:
+
+| multiplier | weight | nibble range  |
+|-----------:|-------:|---------------|
+|         1× |   60%  | `0x0..0x9`    |
+|         2× |   25%  | `0xA..0xC`    |
+|         3× |   12%  | `0xD..0xE`    |
+|         4× |    3%  | `0xF`         |
+
+Expected value:
+```
+E[m] = 0.60·1 + 0.25·2 + 0.12·3 + 0.03·4 = 0.60 + 0.50 + 0.36 + 0.12 = 1.58
+```
+
+**With expected multiplier of 1.58×, base reward per tile must be
+`epoch_pool / (144 × 1.58)` to keep the pool solvent in expectation.**
+We additionally enforce a hard cap at the contract level: if total
+paid out approaches `epoch_pool`, late claimers receive at most their
+proportional share. The contract never pays out more than it holds.
+
+### randomness model
+
+```solidity
+uint256 r = uint256(keccak256(abi.encode(
+    blockhash(block.number - 1),
+    block.prevrandao,
+    msg.sender,
+    tileIdx,
+    epoch
+)));
+uint8 nibble = uint8(r & 0xF);
+uint8 multiplier = nibble < 0xA ? 1
+                  : nibble < 0xD ? 2
+                  : nibble < 0xF ? 3
+                  : 4;
+```
+
+This is **proposer-influenceable but bounded**: a malicious validator
+can choose to include or delay a tile-claim transaction to pick a
+favorable `prevrandao`. Worst case, a validator captures 4× instead
+of 1.58× expected — a 2.5× edge per claim, capped at one claim per
+epoch per address. Total economic risk is bounded by:
+
+```
+maxEdge = (4 - 1.58) × tileShare ≈ 2.42 × (epoch_pool / 144 / 1.58)
+       ≈ 1.06% of epoch pool per validator-controlled claim
+```
+
+For the threat model (gamification, not high-value DeFi), this is
+acceptable. A future revision could integrate Chainlink VRF for
+provable fairness; left as an upgrade path.
+
+### eligibility and frequency
+
+```
+struct ClaimRecord { uint64 epoch; uint8 multiplier; uint128 amount; }
+mapping(uint16 tileIdx => mapping(uint64 epoch => address claimer)) public claimedBy;
+mapping(address => uint64 lastClaimEpoch) public lastClaim;
+
+require(ascend.balanceOf(msg.sender) >= MIN_HOLDING, "no holding");
+require(lastClaim[msg.sender] < currentEpoch, "already claimed");
+require(claimedBy[idx][currentEpoch] == address(0), "tile taken");
+require(idx < 144, "out of range");
+```
+
+Each address gets exactly one tile per epoch. Each tile can be claimed
+by exactly one address per epoch. The race for "good" tiles is
+incidental — all tiles use the same multiplier RNG, so there is no
+preferable tile.
+
+### state
+
+```solidity
+contract TileEngine {
+    address public immutable hook;            // only sender allowed for depositReward
+    Ascend  public immutable ascend;          // checked for MIN_HOLDING
+
+    uint64  public constant EPOCH_LENGTH = 24 hours;
+    uint16  public constant GRID_SIZE = 144;
+    uint64  public immutable genesisTime;
+
+    uint256 public currentEpochPool;          // accumulating ETH for the live epoch
+    uint64  public currentEpochStart;         // unix ts when this epoch began
+    uint256 public unclaimedRollover;         // unclaimed share carried forward
+
+    // history (analytics)
+    mapping(uint64 => uint256) public epochPool;        // total funded for that epoch
+    mapping(uint64 => uint256) public epochPaidOut;     // total paid out to claimers
+
+    // claim state
+    mapping(uint16 => mapping(uint64 => address)) public claimedBy;
+    mapping(address => uint64) public lastClaimEpoch;
+    mapping(address => mapping(uint64 => ClaimRecord)) public lastClaim;
+}
+```
+
+### functions
+
+```solidity
+// called only by the hook
+function depositReward() external payable;
+
+// called by holders
+function claimTile(uint16 tileIdx) external returns (uint8 multiplier, uint256 reward);
+
+// views
+function currentEpoch() external view returns (uint64);
+function currentBaseReward() external view returns (uint256);  // pool / GRID_SIZE / 1.58
+function isTileAvailable(uint16 idx) external view returns (bool);
+function canClaim(address user) external view returns (bool);
+```
+
+### connection to holdings
+
+The reason this is "tiles for holders" not "tiles for everyone":
+
+1. **MIN_HOLDING gate.** Must hold ≥ 1 ascend to flip. Buying ascend
+   is the entry ticket to the game.
+2. **Proportional opportunity.** A holder with more ascend isn't
+   given more flips — every holder gets one per epoch. But larger
+   holders benefit more from the LP's compounding floor (which is
+   the primary value), so the tile game adds variance to the smaller
+   holders' returns.
+3. **Skin in the game.** The reward pool grows with trading volume.
+   Holders are aligned with volume growth: more trading → more fees
+   → bigger tile pool → bigger tile rewards.
+
+### invariants
+
+#### TI-1. Reward pool solvency
+```
+sum(claimedRewards in epoch e) ≤ epochPool[e]
+```
+Enforced by the contract via cumulative-payout bookkeeping. The
+last claimer in an epoch may receive less than their expected
+multiplier amount if the pool runs dry.
+
+#### TI-2. Single-claim-per-epoch
+```
+∀ address a, ∀ epoch e: |{ idx : claimedBy[idx][e] == a }| ≤ 1
+```
+Enforced by `lastClaimEpoch[a] < currentEpoch` check.
+
+#### TI-3. Hook-only deposit
+```
+msg.sender == hook  for all calls to depositReward()
+```
+Enforced by `require(msg.sender == hook, "not hook")`. No backdoor
+funding from arbitrary parties (would distort RNG and accounting).
+
+#### TI-4. Roll-forward invariant
+```
+∀ epoch e:
+    currentEpochPool[e+1] += rolloverFromUnclaimed[e]
+where rolloverFromUnclaimed[e] = epochPool[e] - epochPaidOut[e]
+```
+Unclaimed reward share doesn't disappear; it boosts the next epoch.
+
+#### TI-5. Bounded validator edge
+Worst-case validator manipulation per claim is bounded by
+`(4 − 1.58) × (epoch_pool / 144 / 1.58) ≈ 0.011 × epoch_pool`.
+
 ## reentrancy model
 
 The rebalance touches PoolManager (for `decreaseLiquidity` and
@@ -288,6 +487,38 @@ If we choose to retire v1 publicly, the migration is informational only:
 holders can read v1's `quoteSell` and exit at the v1 floor, then
 participate in v2's mining. There is no protocol-level migration.
 
+## fee split — concrete numbers
+
+Per the `FEE_BPS = 500`, `LP_RETENTION_BPS = 400`, `TILE_BPS = 100`
+split, on every $100 of trade volume:
+
+```
+$5.00 = total fee
+$4.00 → LP depth (floor lift)
+$1.00 → TileEngine reward pool
+```
+
+At sato-equivalent volume of $15M / 24h:
+```
+$750k     fees collected per day
+$600k     compounded into LP (floor rises)
+$150k     into the tile pool
+```
+
+Per epoch (24h), tile pool of $150k → 144 tiles → expected
+$150k / 144 / 1.58 = $658 base reward → $658 to $2,632 per claim.
+
+At $1M / 24h volume (more modest):
+```
+$50k      fees per day
+$40k      LP depth
+$10k      tile pool
+```
+Tile rewards: $44 to $176 per claim.
+
+Tile rewards are a meaningful incentive for holders without being
+large enough to dominate token economics.
+
 ## audit checklist before mainnet
 
 - [ ] Forge tests cover: floor monotonicity (buy, sell, mixed), supply
@@ -302,6 +533,14 @@ participate in v2's mining. There is no protocol-level migration.
 - [ ] Reentrancy guard tested under nested PoolManager callbacks.
 - [ ] Genesis ritual is atomic (single tx if possible; otherwise
       single deploy script with no exploitable window).
+- [ ] TileEngine: `depositReward` only callable by hook.
+- [ ] TileEngine: total payout per epoch ≤ epochPool (solvency).
+- [ ] TileEngine: one claim per address per epoch.
+- [ ] TileEngine: random multiplier distribution matches spec weights.
+- [ ] TileEngine: reentrancy-protected claim path (`call` to user
+      followed by no further state writes).
+- [ ] TileEngine: handles edge cases — zero-pool epoch, all-tiles-claimed,
+      MIN_HOLDING bypass attempts.
 
 ## appendix A — floor monotonicity proof (algebraic)
 
