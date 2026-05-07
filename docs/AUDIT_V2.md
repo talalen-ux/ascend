@@ -131,7 +131,7 @@ can call this freely; cost amortizes naturally with epoch revenue.
 
 ## HIGH
 
-### H-1 — Pool initialization race (carryover from v1)
+### ~~H-1~~ — Pool initialization race (carryover from v1) — **FIXED**
 
 **file:** `contracts/src/AscendHookV2.sol`
 **function:** `_afterInitialize`
@@ -151,8 +151,20 @@ But it still breaks the on-chain bound `poolId` reported by indexers
 and the dapp config. Fix is the same as v1: a `Genesis` constructor
 that bundles deploy + initialize + LP-seed atomically.
 
-**Severity:** HIGH because mitigations are partial. **Recommendation:**
-add `Genesis.sol` deploy script that does it in one tx.
+**Severity:** HIGH because mitigations are partial.
+
+**Resolution:** `contracts/src/Genesis.sol` plus the
+`contracts/script/DeployV2.s.sol` script. Genesis is a single-purpose
+contract whose constructor:
+  1. Deploys `AscendHookV2` via CREATE2 (with mined salt + 1 ETH bootstrap)
+  2. Builds the canonical PoolKey
+  3. Calls `poolManager.initialize(key, sqrtPriceX96)`
+  4. Hook's `afterInitialize` re-enters PoolManager and seeds the LP
+
+All within one transaction. The race window is closed: there is no
+state in which the pool exists and is initialized but unfunded.
+
+**Status:** FIXED.
 
 ### H-2 — V4 `BeforeSwapDelta` sign convention is unverified
 
@@ -504,7 +516,7 @@ prevent accidental deploy.
 - [x] **C-2** — genesis LP seed implemented; atomic with `afterInitialize`
 - [x] **C-3** — `unlockCallback` dispatches to `_seedGenesis` and `_doRebalance`
 - [x] **C-4** — `rebalance()` implemented; collect → split → donate
-- [ ] **H-1** — atomic Genesis deploy script
+- [x] **H-1** — atomic Genesis deploy contract (`contracts/src/Genesis.sol` + `contracts/script/DeployV2.s.sol`)
 - [ ] **H-2** — `forge test` against real PoolManager; verify
       `BalanceDelta` sign convention, fee credit behavior under
       `OVERRIDE_FEE_FLAG`, and `donate()` semantics

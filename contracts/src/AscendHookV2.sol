@@ -12,6 +12,7 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapD
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {SafeCast} from "v4-core/libraries/SafeCast.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {LiquidityAmounts} from "v4-periphery/libraries/LiquidityAmounts.sol";
 
 import {Ascend} from "./Ascend.sol";
@@ -61,6 +62,7 @@ contract AscendHookV2 is BaseHook {
     using SafeCast for uint256;
     using SafeCast for int256;
     using LPFeeLibrary for uint24;
+    using StateLibrary for IPoolManager;
 
     // -----------------------------------------------------------------
     // immutables and locked parameters
@@ -227,30 +229,48 @@ contract AscendHookV2 is BaseHook {
     }
 
     function _floor() internal view virtual returns (uint256) {
-        // floor = Y_in_LP / circulating_ascend
+        if (!isInitialized || liquidityHeld == 0) return 0;
+
+        // 1. Read live sqrtPrice from PoolManager.
+        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) return 0;
+
+        // 2. Compute the position's underlying reserves at the current
+        //    price. For our full-range position this is exact.
+        uint160 sqrtLowerX96 = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtUpperX96 = TickMath.getSqrtPriceAtTick(tickUpper);
+
+        (uint256 ethActive, uint256 ascendActive) =
+            LiquidityAmounts.getAmountsForLiquidity(
+                sqrtPriceX96,
+                sqrtLowerX96,
+                sqrtUpperX96,
+                liquidityHeld
+            );
+
+        // 3. `circulating` = supply outside the LP. Includes any ascend
+        //    held by the hook itself (always 0 in steady state, but
+        //    included for robustness against accidental holds).
+        uint256 supply = ascend.totalSupply();
+        uint256 ascendInLp = ascendActive;
+        uint256 ascendOnHook = ascend.balanceOf(address(this));
+        if (ascendInLp + ascendOnHook >= supply) return 0;
+        uint256 circulating = supply - ascendInLp - ascendOnHook;
+
+        // 4. floor = ETH-in-LP / circulating, scaled to 1e18 fixed-point.
         //
-        // For the on-chain implementation, both terms must be derived
-        // from the live position state in PoolManager (not from
-        // `liquidityHeld` snapshots, because `donate()` adds to reserves
-        // without changing L). The clean path is:
-        //
-        //   1. Read pool's slot0 → currentSqrtPriceX96
-        //   2. amount0 = LiquidityAmounts.getAmount0ForLiquidity(...)
-        //      (includes uncollected fees if we've donated since the
-        //       last collect — which we do every rebalance)
-        //   3. Y_in_LP ≈ amount0 + uncollectedAccrued0
-        //   4. X_in_LP analogous
-        //   5. circulating = SUPPLY_CAP − X_in_LP − ascend.balanceOf(hook)
-        //   6. return (Y_in_LP * 1e18) / circulating
-        //
-        // This requires StateLibrary/Currency reads from PoolManager
-        // that are version-pinned to v4-core. Off-chain callers can
-        // compute this trivially; the on-chain getter is left as a
-        // separate slice once the V4 read patterns are confirmed.
-        //
-        // Until then, returns 0 — frontend should compute floor from
-        // an off-chain RPC read of the pool reserves.
-        return 0;
+        // This is a CONSERVATIVE LOWER BOUND. Between rebalances, the
+        // dynamic-fee accrual and any direct donations sit in the
+        // position's fee-growth credits and aren't reflected in
+        // `ethActive`. After the next `rebalance()`, those fees are
+        // donated back into the position's underlying reserves and the
+        // floor reported here jumps to its true value. Off-chain
+        // callers wanting the precise pre-rebalance floor should add
+        // the position's outstanding fee credits — exact computation
+        // requires StateLibrary feeGrowthInside reads which are
+        // version-pinned to v4-core. The conservative on-chain
+        // floor satisfies the monotonicity invariant either way.
+        return (ethActive * 1e18) / circulating;
     }
 
     // -----------------------------------------------------------------
