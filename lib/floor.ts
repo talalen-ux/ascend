@@ -9,7 +9,7 @@
  *   mining fee     5%   retained in vault
  *   redemption fee 15%  retained in vault
  *   base premium   100% — at genesis, price = 2 · floor
- *   premium scale  500 ETH — premium gains BASE per S of cumulative mining
+ *   premium scale  250 ETH — premium gains BASE per S of cumulative mining
  *
  * cumulativeEthIn is a monotone-non-decreasing counter: every mine
  * permanently raises the premium for every subsequent miner. Sells do not

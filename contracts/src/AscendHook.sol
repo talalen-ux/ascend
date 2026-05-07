@@ -25,6 +25,16 @@ import {Ascend} from "./Ascend.sol";
 ///         intercepted in `beforeSwap` and replaced with an exact, deterministic
 ///         transfer at the current floor.
 ///
+/// @dev    INTEGRATION PRECONDITION (audit M-1): both `_executeBuy` and
+///         `_executeSell` use `poolManager.take(...)` to physically pull
+///         the input asset out of the PoolManager. `take` requires the
+///         PoolManager to actually hold the asset, so any router invoking
+///         this hook MUST `settle` the input BEFORE calling `swap`. The
+///         in-tree `AscendRouter` follows this order. Routers that follow
+///         the more common "swap-then-settle" sequence will revert at the
+///         `take` call inside `beforeSwap` — funds are not at risk, the
+///         transaction simply fails.
+///
 /// @dev    Permissions encoded in the deployed address (mined via CREATE2):
 ///           afterInitialize          (validate pool config + lock state)
 ///           beforeAddLiquidity       (reject all LP — the hook IS the LP)

@@ -21,24 +21,35 @@ returns the same delta. **same price by construction**, not by arbitrage.
 ## the math
 
 ```
-floor             = vault / supply        ETH per ascend (hook balance / total supply)
-mining fee        = 5% of ETH in          retained in vault, deepens backing
-redemption fee    = 5% of ETH out        retained in vault, deepens backing
+floor              = vault / supply              ETH per ascend (hook balance / total supply)
+premium_bps        = 10_000 + cumE · BPS / S     base 100% + ratchet (S = 250 ETH)
+mining_price       = floor · (1 + premium)       what a buyer pays per ascend
+redemption_price   = floor · (1 − 5%)            what a seller receives per ascend
+mining fee         = 5% of ETH in                retained in vault, deepens backing
+redemption fee     = 5% of ETH out               retained in vault, deepens backing
 ```
 
-both sides trade at `floor`. the fees are not paid to anyone — they
-remain in the vault permanently as additional backing for every
-remaining holder.
+mining and redemption use different prices on purpose: every mine routes
+ETH into the vault at a markup over the floor (the `premium`), expanding
+backing per token issued. redemption returns the floor minus the
+redemption fee. both fees stay in the vault as permanent backing.
+
+`cumulativeEthIn` is monotone non-decreasing — only mines increment it,
+sells never decrement it — so `premium_bps` ratchets upward forever.
 
 **theorem 1 (mining lifts the floor).** for any `e > 0`,
-`floor' / floor = (R + e) / (R + 0.95·e) > 1`.
+`floor' / floor = (V + e)·(1+π) / (V·(1+π) + 0.95·e) > 1`.
 
 **theorem 2 (redemption lifts the floor).** for any `0 < r < S`,
 `floor' / floor = (S − 0.95·r) / (S − r) > 1`.
 
-**corollary (monotone).** the floor at the end of any finite sequence of
-trades is at least the floor at the start. the floor cannot go down,
-ever, under any sequence of buys and sells.
+**theorem 3 (premium is monotone).** `cumulativeEthIn` only increments
+on mines, so `premium_bps` is non-decreasing under any finite trade
+sequence.
+
+**corollary (monotone vault, monotone floor, monotone premium).** the
+floor and the premium at the end of any finite sequence of trades are
+at least the floor and premium at the start. neither can decrease.
 
 read the full treatment, including the solvency invariant and the
 security model, in the [whitepaper](./app/whitepaper/page.tsx).
