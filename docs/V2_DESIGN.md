@@ -157,7 +157,7 @@ bits of the address.
    ETH per ascend.
 5. `afterInitialize` validates currency0 == ETH, currency1 == ascend,
    fee == 0, and locks the poolId.
-6. Hook deposits all 21M ascend + 1 ETH as a full-range LP position.
+6. Hook deposits all 122M ascend + 1 ETH as a full-range LP position.
    This is the only `addLiquidity` call ever made on this pool.
 7. Hook is now ready. Anyone can mine via standard V4 swap.
 ```

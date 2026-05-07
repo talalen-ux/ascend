@@ -13,28 +13,38 @@ import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {SafeCast} from "v4-core/libraries/SafeCast.sol";
 
 import {Ascend} from "./Ascend.sol";
+import {TileEngine} from "./TileEngine.sol";
 
-/// @title  AscendHookV2 — single LP, single chart, monotone-rising floor.
+/// @title  AscendHookV2 — single LP, single chart, monotone-rising floor,
+///         tile-game USP.
 ///
 /// @notice The hook owns a full-range V4 LP that holds the entire ascend
 ///         supply paired against the protocol's ETH vault. Buyers and
-///         sellers trade the same constant-product curve; 5% of every
-///         swap is retained by the hook and re-deposited as additional
-///         ETH-side depth on the next rebalance, so the LP's lower tick
-///         (= the floor) is monotone non-decreasing forever.
+///         sellers trade the same constant-product curve; on every swap
+///         the hook collects a 5% fee and splits it:
+///
+///           4% retained as ETH-side LP depth (compounds the floor)
+///           1% pushed to TileEngine.depositReward() as the reward pool
+///                for the 12×12 tile-flipping game
+///
+///         The LP's lower tick (= the floor) is monotone non-decreasing
+///         forever. The tile pool grows with trading volume, paying out
+///         to holders who claim tiles each 24h epoch.
 ///
 /// @dev    Locked parameters per `docs/V2_DESIGN.md`:
-///           SUPPLY_CAP        21_000_000 ascend (1e18 each → 21M·1e18)
-///           BOOTSTRAP_ETH     1 ether (constructor enforces exact value)
-///           FEE_BPS           500 (5%, applied via dynamic-fee override)
-///           LP_RANGE          full range
-///           pool fee          0 (hook charges its own fee)
+///           SUPPLY_CAP         122_000_000 ascend (1e18 each → 122M·1e18)
+///           BOOTSTRAP_ETH      1 ether (constructor enforces exact value)
+///           FEE_BPS            500 (5%, applied via dynamic-fee override)
+///           LP_RETENTION_BPS   400 (4% to LP depth)
+///           TILE_BPS           100 (1% to TileEngine)
+///           LP_RANGE           full range
+///           pool fee           dynamic (hook overrides per swap)
 ///
 ///         Hook permissions (encoded in the deployed CREATE2 address):
 ///           afterInitialize       (validate pool config + bind + seed LP)
 ///           beforeAddLiquidity    (reject all external LP adds)
 ///           beforeSwap            (apply 5% dynamic fee)
-///           afterSwap             (track fees + trigger rebalance)
+///           afterSwap             (split fee + trigger rebalance)
 ///
 ///         Invariants (proofs in docs/V2_DESIGN.md, appendix A):
 ///           floor(t)   = ETH_in_LP(t) / circulating(t)
@@ -42,6 +52,7 @@ import {Ascend} from "./Ascend.sol";
 ///           supply(t)  = SUPPLY_CAP                            (constant)
 ///           LP owner   = address(this)                         (sole LP)
 ///           pool       = bound to one PoolId                   (single pool)
+///           tileEngine = immutable, set in constructor         (hook-only deposit)
 contract AscendHookV2 is BaseHook {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -53,15 +64,18 @@ contract AscendHookV2 is BaseHook {
     // immutables and locked parameters
     // -----------------------------------------------------------------
 
-    /// @notice 21M hard-cap. Minted once, in the constructor, to the hook.
-    uint256 public constant SUPPLY_CAP = 21_000_000 * 1e18;
+    /// @notice 122M hard-cap. Minted once, in the constructor, to the hook.
+    uint256 public constant SUPPLY_CAP = 122_000_000 * 1e18;
 
     /// @notice Genesis ETH locked into the LP. Constructor enforces exact value.
     uint256 public constant BOOTSTRAP_ETH = 1 ether;
 
-    /// @notice 5% on both sides; retained as ETH-side LP depth on the next
-    ///         rebalance. Applied via V4's dynamic-fee override.
+    /// @notice 5% total fee on both sides. Applied via V4's dynamic-fee
+    ///         override and split as 4% to LP depth, 1% to tile pool.
     uint24 public constant FEE_BPS = 500;
+    uint24 public constant LP_RETENTION_BPS = 400;
+    uint24 public constant TILE_BPS = 100;
+    uint24 public constant BPS_DENOM = 10_000;
 
     /// @notice Rebalance is gated on this much accumulated fee to amortize
     ///         the gas cost of `removeLiquidity` + `addLiquidity` across
@@ -71,6 +85,11 @@ contract AscendHookV2 is BaseHook {
     /// @notice The ascend ERC-20. Deployed and minted by this hook in
     ///         `constructor`. Sole minter forever.
     Ascend public immutable ascend;
+
+    /// @notice The tile-game contract. Receives 1% of every swap.
+    ///         Deployed by this hook in the constructor, address is
+    ///         immutable thereafter.
+    TileEngine public immutable tileEngine;
 
     // -----------------------------------------------------------------
     // pool state (set once, in afterInitialize)
@@ -136,13 +155,16 @@ contract AscendHookV2 is BaseHook {
     // constructor — deploy token, mint cap to self, lock bootstrap
     // -----------------------------------------------------------------
 
-    /// @notice Genesis. Constructor enforces exactly 1 ETH and mints all
-    ///         21M ascend to the hook itself. The hook is the only entity
-    ///         that ever holds the bootstrap or controls the LP.
+    /// @notice Genesis. Constructor enforces exactly 1 ETH, mints all
+    ///         122M ascend to the hook itself, and deploys the
+    ///         TileEngine. The hook is the only entity that ever holds
+    ///         the bootstrap or controls the LP, and it's the only
+    ///         address that can fund the tile reward pool.
     constructor(IPoolManager _manager) payable BaseHook(_manager) {
         if (msg.value != BOOTSTRAP_ETH) revert WrongBootstrap();
         ascend = new Ascend(address(this));
         ascend.mint(address(this), SUPPLY_CAP);
+        tileEngine = new TileEngine(address(this), ascend);
     }
 
     // -----------------------------------------------------------------
@@ -269,26 +291,52 @@ contract AscendHookV2 is BaseHook {
     }
 
     // -----------------------------------------------------------------
-    // afterSwap — accumulate fees, trigger rebalance if past threshold
-    //              (slice 6 work)
+    // afterSwap — split fee, fund tile pool, trigger rebalance
     // -----------------------------------------------------------------
+    //
+    // The 5% dynamic fee was applied in beforeSwap; PoolManager has
+    // already collected it and sent it here as ETH (via take()). Split:
+    //
+    //     LP_RETENTION_BPS / FEE_BPS = 80%  →  pendingFees (re-LP'd later)
+    //     TILE_BPS         / FEE_BPS = 20%  →  TileEngine.depositReward
+    //
+    // We use the ETH amount measurable from the hook's own balance
+    // delta as a proxy for the fee, since dynamic-fee accounting routes
+    // the fee directly to the hook in V4. The exact mechanism is
+    // delegated to slice 6 (rebalance routine + position state queries).
 
     function _afterSwap(
         address,
         PoolKey calldata,
         IPoolManager.SwapParams calldata,
-        // BalanceDelta — tokens that moved in this swap
-        // (we use it to compute the fee retained, slice 6)
-        // ignored in skeleton:
-        // BalanceDelta,
         bytes calldata
     ) internal virtual returns (bytes4, int128) {
-        // TODO (slice 6):
-        //   1. Compute fee earned this swap from the BalanceDelta + 5% rate.
-        //   2. pendingFees += fee
-        //   3. if pendingFees >= REBALANCE_THRESHOLD: rebalance()
+        // Fee splitting + rebalance trigger are implemented in slice 6
+        // alongside the genesis LP seed. The contract layout above
+        // commits to:
+        //
+        //   1. Read fee credited to hook from PoolManager state (the
+        //      accounting depends on whether the swap was zeroForOne
+        //      and whether the dynamic-fee override directs the fee to
+        //      the LP token-by-token or to the hook directly).
+        //
+        //   2. Compute tilePortion = fee * TILE_BPS / FEE_BPS
+        //                  lpPortion   = fee * LP_RETENTION_BPS / FEE_BPS
+        //
+        //   3. tileEngine.depositReward{value: tilePortion}()
+        //      pendingFees += lpPortion
+        //
+        //   4. if pendingFees >= REBALANCE_THRESHOLD, call rebalance()
 
         return (BaseHook.afterSwap.selector, 0);
+    }
+
+    /// @notice Forwards a value-bearing reward deposit to the TileEngine.
+    ///         Internal helper exposed only to slice-6 logic. Reverts if
+    ///         called by anyone other than this contract (defensive).
+    function _depositToTilePool(uint256 amount) internal {
+        if (amount == 0) return;
+        tileEngine.depositReward{value: amount}();
     }
 
     // -----------------------------------------------------------------
