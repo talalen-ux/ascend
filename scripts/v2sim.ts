@@ -29,7 +29,7 @@
 const ETH_USD = 2_350;
 const SUPPLY_CAP = 21_000_000;
 const FEE = 0.05;
-const BOOTSTRAP_ETH = 0.1;
+const BOOTSTRAP_ETH = 1;
 const STEPS = 1_000;
 
 type V2 = { X: number; Y: number };
