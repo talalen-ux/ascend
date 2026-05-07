@@ -18,7 +18,7 @@
  */
 
 const ETH_USD = 2_350;
-const SUPPLY_CAP = 21_000_000;
+const SUPPLY_CAP = 122_000_000;
 const FEE = 0.05;
 const BOOTSTRAP_ETH = 1;
 const STEPS = 1_000;
@@ -89,7 +89,7 @@ const cases: [string, number, number][] = [
   ["aggressive: $50M / $40M", 50_000_000,    40_000_000],
 ];
 
-console.log(`v2 concentration sweep — bootstrap 1 ETH, supply 21M\n`);
+console.log(`v2 concentration sweep — bootstrap 1 ETH, supply 122M\n`);
 console.log(`c=1   full range  (V2-equivalent)`);
 console.log(`c=2   range factor 16×  (price walks within [genesis/4, 4×ceiling])`);
 console.log(`c=5   range factor 625× (looser, more headroom)`);

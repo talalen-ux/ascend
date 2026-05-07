@@ -1,7 +1,7 @@
 /**
  * v2 mechanics simulation: floor-ratcheting concentrated LP.
  *
- *   - 21M ascend hard-cap, fully minted into the LP at genesis
+ *   - 122M ascend hard-cap, fully minted into the LP at genesis
  *   - hook owns one V4 LP; the LP IS the vault
  *   - 5% fee on every swap; fee retained as additional ETH in the LP
  *     (deepens depth without minting ascend → floor lifts)
@@ -27,7 +27,7 @@
  */
 
 const ETH_USD = 2_350;
-const SUPPLY_CAP = 21_000_000;
+const SUPPLY_CAP = 122_000_000;
 const FEE = 0.05;
 const BOOTSTRAP_ETH = 1;
 const STEPS = 1_000;
@@ -116,7 +116,7 @@ function row(label: string, mineUsd: number, redeemUsd: number) {
 }
 
 console.log(`v2 SIMULATION — single LP, single chart, 5% fee retained as depth`);
-console.log(`assumptions: ETH=$${ETH_USD}, supply cap 21M, bootstrap ${BOOTSTRAP_ETH} ETH (~$${(BOOTSTRAP_ETH * ETH_USD).toFixed(0)})\n`);
+console.log(`assumptions: ETH=$${ETH_USD}, supply cap ${(SUPPLY_CAP / 1e6).toFixed(0)}M, bootstrap ${BOOTSTRAP_ETH} ETH (~$${(BOOTSTRAP_ETH * ETH_USD).toFixed(0)})\n`);
 
 console.log("=== (1) volume scenarios — same inputs as sato comparison ===\n");
 row("$200k mined, no sells", 200_000, 0);
