@@ -5,6 +5,7 @@ import { Trade } from "@/components/Trade";
 import { Mechanism } from "@/components/Mechanism";
 import { VenueRow } from "@/components/VenueRow";
 import { Holdings } from "@/components/Holdings";
+import { Tiles } from "@/components/Tiles";
 
 export default function Page() {
   return (
@@ -19,13 +20,15 @@ export default function Page() {
         <Trade />
       </div>
 
+      <Tiles />
+
       <Holdings />
 
       <Mechanism />
 
       <footer className="mt-20 flex items-center justify-between text-[11px] text-ash">
         <span>vault-backed · monotone floor · own counterparty · uniswap v4</span>
-        <span className="font-mono">ascend — v1.0</span>
+        <span className="font-mono">ascend — v2</span>
       </footer>
     </main>
   );

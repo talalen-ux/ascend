@@ -89,3 +89,68 @@ export const ERC20_ABI = [
     outputs: [{ type: "bool" }],
   },
 ] as const;
+
+/// V2 hook ABI — minimal surface the dapp consumes.
+export const ASCEND_HOOK_V2_ABI = [
+  { type: "function", name: "ascend", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "tileEngine", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "floor", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "liquidityHeld", stateMutability: "view", inputs: [], outputs: [{ type: "uint128" }] },
+  { type: "function", name: "isInitialized", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
+  { type: "function", name: "rebalance", stateMutability: "nonpayable", inputs: [], outputs: [] },
+] as const;
+
+/// TileEngine ABI for the claim flow.
+export const TILE_ENGINE_ABI = [
+  { type: "function", name: "currentEpoch", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "currentEpochPool", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "currentBaseReward", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "GRID_SIZE", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
+  { type: "function", name: "EPOCH_LENGTH", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  {
+    type: "function",
+    name: "claimedBy",
+    stateMutability: "view",
+    inputs: [{ type: "uint16" }, { type: "uint64" }],
+    outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "lastClaimEpoch",
+    stateMutability: "view",
+    inputs: [{ type: "address" }],
+    outputs: [{ type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "isTileAvailable",
+    stateMutability: "view",
+    inputs: [{ type: "uint16" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "canClaim",
+    stateMutability: "view",
+    inputs: [{ type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "claimTile",
+    stateMutability: "nonpayable",
+    inputs: [{ type: "uint16" }],
+    outputs: [{ type: "uint8", name: "multiplier" }, { type: "uint256", name: "reward" }],
+  },
+  {
+    type: "event",
+    name: "TileClaimed",
+    inputs: [
+      { type: "address", name: "claimer", indexed: true },
+      { type: "uint16", name: "tileIdx", indexed: true },
+      { type: "uint64", name: "epoch", indexed: true },
+      { type: "uint8", name: "multiplier" },
+      { type: "uint256", name: "reward" },
+    ],
+  },
+] as const;
