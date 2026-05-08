@@ -144,8 +144,9 @@ contract AscendHookV2 is BaseHook {
     uint128 public liquidityHeld; // L of our single LP position
 
     /// @notice Last block in which `tx.origin` initiated a buy. Used to
-    ///         revert sells in the same block as a buy (anti-flash-loan
-    ///         arbitrage, sato pattern).
+    ///         revert sells in the same block as a buy — defeats
+    ///         flash-loan arbitrage between mint and burn at the cost
+    ///         of one storage write per buy.
     mapping(address => uint256) public lastBuyBlock;
 
     // Note: V4 natively tracks accumulated fees inside the LP position
