@@ -6,6 +6,7 @@ import { Mechanism } from "@/components/Mechanism";
 import { VenueRow } from "@/components/VenueRow";
 import { Holdings } from "@/components/Holdings";
 import { Tiles } from "@/components/Tiles";
+import { Mark } from "@/components/Mark";
 
 export default function Page() {
   return (
@@ -26,8 +27,11 @@ export default function Page() {
 
       <Mechanism />
 
-      <footer className="mt-20 flex items-center justify-between text-[11px] text-ash">
-        <span>vault-backed · monotone floor · own counterparty · uniswap v4</span>
+      <footer className="mt-20 flex items-center justify-between gap-6 text-[11px] text-ash">
+        <div className="flex items-center gap-3">
+          <Mark size={20} />
+          <span>LP-backed floor · tile rewards from volume · uniswap v4</span>
+        </div>
         <span className="font-mono">ascend — v2</span>
       </footer>
     </main>

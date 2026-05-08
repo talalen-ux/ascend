@@ -1,9 +1,9 @@
 /**
- * The ascend mark. Loads /logo.png from the public folder so a designer
+ * The ascend mark. Loads /logo.jpg from the public folder so a designer
  * can drop in a final asset without touching the React tree.
  *
- * Drop the brand-master file at `public/logo.png` to update the mark
- * everywhere it's used (Hero, TopNav, faded background mark, etc.).
+ * Replace the brand-master file at `public/logo.jpg` to update the
+ * mark everywhere it's used (Hero, TopNav, faded background, footer).
  *
  * `objectFit: "contain"` so the image scales correctly when the
  * declared width/height differs from the source aspect ratio.
@@ -12,7 +12,7 @@ export function Mark({ size = 28, className }: { size?: number; className?: stri
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/logo.png"
+      src="/logo.jpg"
       alt="ascend"
       width={size}
       height={size}
