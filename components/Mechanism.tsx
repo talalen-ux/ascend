@@ -11,12 +11,12 @@ const properties = [
   {
     title: "Floor only goes up",
     body:
-      "every swap pays a 5% fee. 4% is donated back into the LP, growing the ETH side without minting any ascend. the LP's lower bound — vault per circulating ascend — is monotone non-decreasing forever. holders have a redemption guarantee that compounds with volume.",
+      "every swap pays a 1% fee — buys also pay a flat ~$2 surcharge. 70% of every fee is retained in the LP, growing the ETH side without minting any ascend. the LP's lower bound — vault per circulating ascend — is monotone non-decreasing forever. holders have a redemption guarantee that compounds with volume.",
   },
   {
     title: "Tiles · the share",
     body:
-      "1% of every swap funds a 12×12 grid of claimable tiles. once per 24h epoch, holders flip one tile and reveal a 1× to 4× multiplier on their share of the pool. the more volume, the bigger the prize. unclaimed tiles roll forward.",
+      "30% of every swap fee funds a 12×12 grid of claimable tiles. once per 24h epoch, holders flip one tile and reveal a 1× to 4× multiplier on their share of the pool. the more volume, the bigger the prize. unclaimed tiles roll forward.",
   },
   {
     title: "Real liquidity",

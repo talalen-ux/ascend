@@ -108,7 +108,7 @@ export function Trade() {
           small
         />
         <Row
-          label={isBuy ? "Mining fee (5%)" : "Redemption fee (5%)"}
+          label={isBuy ? "Buy fee (1% + ~$2)" : "Sell fee (1%)"}
           value={quote?.fee ?? 0}
           suffix="Ξ"
           muted
@@ -163,8 +163,8 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? "you swap ETH for ascend on the V4 pool. 5% fee: 4% deepens the LP (raises the floor for every holder), 1% funds the tile-flip pool. same curve, same price, both sides — no spread, no special routing."
-          : "you swap ascend for ETH on the same V4 pool. 5% fee: 4% deepens the LP, 1% funds the tile pool. selling lifts the floor too — the fee compounds in either direction."}
+          ? "you swap ETH for ascend on the V4 pool. 1% base fee + a flat ~$2 surcharge per buy. 70% of the fee deepens the LP (raises the floor for every holder); 30% funds the tile-flip pool. same curve, same price, both sides — no spread, no special routing."
+          : "you swap ascend for ETH on the same V4 pool. flat 1% fee, no surcharge. 70% deepens the LP, 30% funds the tile pool. selling lifts the floor too — the fee compounds in either direction."}
       </p>
     </section>
   );
