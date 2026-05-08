@@ -280,17 +280,23 @@ contract AscendHookV2Test is Test, Deployers {
         hook.rebalance();
         assertGt(address(tile).balance, 0);
 
-        // Carol holds zero ascend → claim reverts.
+        // Carol holds zero ascend → claim reverts. (We use a holder
+        // that we know is selected via _selectedHolder; carol may also
+        // be unselected, so we'd want the test to hit the holding
+        // check specifically. Since carol has 0 balance the holdings
+        // check fires first in the contract's order of revert
+        // statements, so this works regardless of selection.)
         vm.expectRevert(TileEngine.InsufficientHoldings.selector);
-        vm.prank(carol);
+        vm.prank(carol, carol);
         tile.claimTile(0);
     }
 
     function test_tileOneClaimPerEpoch() public {
         _buy(alice, 10 ether);
         hook.rebalance();
+        address holder = _selectedHolder();
 
-        vm.startPrank(alice);
+        vm.startPrank(holder, holder);
         tile.claimTile(0);
         vm.expectRevert(TileEngine.AlreadyClaimedThisEpoch.selector);
         tile.claimTile(1);
@@ -299,13 +305,14 @@ contract AscendHookV2Test is Test, Deployers {
 
     function test_tileSecondAddressFailsOnSameTile() public {
         _buy(alice, 10 ether);
-        _buy(bob, 1 ether);
         hook.rebalance();
+        address holder1 = _selectedHolder();
+        address holder2 = _selectedHolderExcluding(holder1);
 
-        vm.prank(alice);
+        vm.prank(holder1, holder1);
         tile.claimTile(0);
 
-        vm.prank(bob);
+        vm.prank(holder2, holder2);
         vm.expectRevert(TileEngine.TileAlreadyClaimed.selector);
         tile.claimTile(0);
     }
@@ -313,13 +320,69 @@ contract AscendHookV2Test is Test, Deployers {
     function test_tileMultiplierIsBounded() public {
         _buy(alice, 10 ether);
         hook.rebalance();
+        address holder = _selectedHolder();
 
-        vm.prank(alice);
+        vm.prank(holder, holder);
         (uint8 multiplier, uint256 reward) = tile.claimTile(0);
 
         assertGe(multiplier, 1);
         assertLe(multiplier, 4);
         assertGt(reward, 0);
+    }
+
+    function test_unselectedHolderCannotClaim() public {
+        _buy(alice, 10 ether);
+        hook.rebalance();
+        // Find an address that holds ascend but is NOT in the 68%
+        // selection cohort this epoch.
+        uint64 e = tile.currentEpoch();
+        address unselected;
+        for (uint256 i = 0; i < 200; i++) {
+            address candidate = address(uint160(0xDEAD0000 + i));
+            if (!tile.isSelected(candidate, e)) {
+                deal(address(ascend), candidate, 2e18);
+                unselected = candidate;
+                break;
+            }
+        }
+        require(unselected != address(0), "every candidate was selected; bad seed");
+        vm.prank(unselected, unselected);
+        vm.expectRevert(TileEngine.NotSelectedThisEpoch.selector);
+        tile.claimTile(0);
+    }
+
+    function test_selectionRateIsApproximately68Percent() public {
+        // Statistical check: of ~500 sampled addresses, between 60–76%
+        // should be selected. Tight bounds because we want to catch
+        // a broken RNG, loose enough to never flake.
+        _buy(alice, 1 ether);
+        hook.rebalance();
+        uint64 e = tile.currentEpoch();
+        require(tile.epochSeed(e) != bytes32(0), "epoch seed not set");
+        uint256 selected = 0;
+        uint256 total = 500;
+        for (uint256 i = 0; i < total; i++) {
+            if (tile.isSelected(address(uint160(0xBABE0000 + i)), e)) selected++;
+        }
+        // 68% × 500 = 340; allow ±8% drift.
+        assertGe(selected * 100, total * 60);
+        assertLe(selected * 100, total * 76);
+    }
+
+    function test_tileClaimRecordPersisted() public {
+        _buy(alice, 10 ether);
+        hook.rebalance();
+        address holder = _selectedHolder();
+
+        vm.prank(holder, holder);
+        (uint8 multiplier, uint256 reward) = tile.claimTile(7);
+
+        // Read back via the public storage getter.
+        (address claimer, uint8 storedMultiplier, uint128 storedReward) =
+            tile.tileClaim(7, tile.currentEpoch());
+        assertEq(claimer, holder, "claimer mismatch");
+        assertEq(uint256(storedMultiplier), uint256(multiplier), "multiplier mismatch");
+        assertEq(uint256(storedReward), reward, "reward mismatch");
     }
 
     function test_tilePoolSolvent() public {
@@ -329,24 +392,27 @@ contract AscendHookV2Test is Test, Deployers {
         uint256 poolBefore = address(tile).balance;
 
         // Have many addresses claim — total payout must not exceed pool.
+        // Each candidate is funded with ascend and then attempts a claim.
+        // Some will revert with NotSelectedThisEpoch (32% expected) — the
+        // try/catch absorbs those without breaking the loop.
         uint256 totalPaid = 0;
-        for (uint16 i = 0; i < 144 && i < 50; i++) {
-            address user = address(uint160(0x100 + i));
-            // Give them ascend by buying.
+        for (uint16 i = 0; i < 144 && i < 80; i++) {
+            address user = address(uint160(0x10000 + i));
+            deal(address(ascend), user, 2e18); // give them MIN_HOLDING
             vm.deal(user, 1 ether);
-            _buy(user, 0.1 ether);
 
             uint256 balBefore = user.balance;
-            vm.prank(user);
+            vm.prank(user, user);
             try tile.claimTile(i) returns (uint8, uint256 reward) {
                 totalPaid += reward;
                 assertEq(user.balance - balBefore, reward, "transfer mismatch");
             } catch {
-                // Pool emptied or other revert; OK
-                break;
+                // NotSelectedThisEpoch or pool emptied; expected
+                continue;
             }
         }
         assertLe(totalPaid, poolBefore, "paid out more than the pool held");
+        assertGt(totalPaid, 0, "no claims succeeded; selection broken?");
     }
 
     function test_tileEpochAdvances() public {
@@ -354,15 +420,22 @@ contract AscendHookV2Test is Test, Deployers {
         hook.rebalance();
 
         uint64 epochAtClaim = tile.currentEpoch();
-        vm.prank(alice);
+        address holderEpoch1 = _selectedHolder();
+        vm.prank(holderEpoch1, holderEpoch1);
         tile.claimTile(0);
 
         // Advance time past one epoch.
         vm.warp(block.timestamp + 24 hours + 1);
         assertEq(tile.currentEpoch(), epochAtClaim + 1);
 
-        // Alice can claim again in new epoch.
-        vm.prank(alice);
+        // New activity advances liveEpoch and seeds the new epoch's RNG.
+        vm.roll(block.number + 1);
+        _buy(alice, 1 ether);
+        hook.rebalance();
+
+        // A fresh selected holder for the new epoch can claim.
+        address holderEpoch2 = _selectedHolder();
+        vm.prank(holderEpoch2, holderEpoch2);
         tile.claimTile(0); // tile 0 again, fresh epoch
     }
 
@@ -458,5 +531,31 @@ contract AscendHookV2Test is Test, Deployers {
             z = (x / z + z) / 2;
         }
         return y;
+    }
+
+    /// @dev Returns an address that is in the current epoch's selection
+    ///      cohort and has been topped up with enough ascend to satisfy
+    ///      MIN_HOLDING. Searches a deterministic candidate space; with
+    ///      68% selection, finding one within 200 tries is virtually
+    ///      certain. Caller must have already triggered an event that
+    ///      sets epochSeed[currentEpoch] (typically via hook.rebalance()
+    ///      or a depositReward).
+    function _selectedHolder() internal returns (address) {
+        return _selectedHolderExcluding(address(0));
+    }
+
+    function _selectedHolderExcluding(address exclude) internal returns (address) {
+        uint64 e = tile.currentEpoch();
+        require(tile.epochSeed(e) != bytes32(0), "epoch seed not set");
+        for (uint256 i = 0; i < 400; i++) {
+            address candidate = address(uint160(0xCAFE0000 + i));
+            if (candidate == exclude) continue;
+            if (tile.isSelected(candidate, e)) {
+                deal(address(ascend), candidate, 2e18);
+                vm.deal(candidate, 1 ether);
+                return candidate;
+            }
+        }
+        revert("no selected holder found in 400 candidates");
     }
 }

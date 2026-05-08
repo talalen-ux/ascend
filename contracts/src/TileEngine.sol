@@ -76,6 +76,18 @@ contract TileEngine {
     ///         expectation.
     uint256 public constant EXPECTED_MULTIPLIER_SCALED = 1_625_000;
 
+    /// @notice Per-epoch random selection rate, in basis points. Only
+    ///         holders for whom `isSelected(addr, epoch)` is true may
+    ///         claim that epoch. The remaining (100 - rate)% must wait
+    ///         for the next epoch and re-roll.
+    ///
+    ///         Set to 6800 = 68%. Spec choice: not every holder gets a
+    ///         daily reward — random subset preserves a sense of
+    ///         scarcity, and the unclaimed share rolls into the next
+    ///         epoch's pool, making it bigger.
+    uint256 public constant SELECTION_RATE_BPS = 6800;
+    uint256 public constant SELECTION_DENOM = 10_000;
+
     // -----------------------------------------------------------------
     // state
     // -----------------------------------------------------------------
@@ -96,13 +108,28 @@ contract TileEngine {
     /// @notice Cumulative paid-out per finalized epoch.
     mapping(uint64 => uint256) public epochPaidOut;
 
-    /// @notice claimedBy[tileIdx][epoch] — address that flipped tile
-    ///         `tileIdx` during `epoch`. address(0) means available.
-    mapping(uint16 => mapping(uint64 => address)) public claimedBy;
+    /// @notice Per-epoch RNG seed, set when the epoch is first activated
+    ///         (via _advanceEpochIfNeeded). Used to derive
+    ///         `isSelected(user, epoch)` so neither the user nor a
+    ///         malicious validator can pre-compute selection
+    ///         membership before the epoch's seed block is mined.
+    mapping(uint64 => bytes32) public epochSeed;
+
+    /// @notice Per-tile per-epoch claim record. Records who flipped the
+    ///         tile, what multiplier they revealed, and what they
+    ///         received. Used by the dapp to show on-hover details
+    ///         (last-4 of claimer + reward amount) without scanning
+    ///         events. claimer == address(0) means the tile is open.
+    struct ClaimRecord {
+        address claimer;     // 20 bytes
+        uint8 multiplier;    //  1 byte    in {1, 2, 3, 4}
+        uint128 reward;      // 16 bytes   in wei (≤ 18 ETH per tile is plenty)
+    }
+    mapping(uint16 => mapping(uint64 => ClaimRecord)) public tileClaim;
 
     /// @notice Last epoch in which `address` has claimed any tile.
     ///         Strict monotonicity enforced; users can claim once per
-    ///         epoch.
+    ///         epoch (when selected).
     mapping(address => uint64) public lastClaimEpoch;
 
     // Reentrancy guard via EIP-1153 transient storage.
@@ -135,6 +162,7 @@ contract TileEngine {
     error EpochPoolEmpty();
     error PayoutFailed();
     error Reentrancy();
+    error NotSelectedThisEpoch();
 
     // -----------------------------------------------------------------
     // constructor
@@ -192,9 +220,14 @@ contract TileEngine {
         // in liveEpoch". The +1 keeps 0 reserved for "never claimed" so
         // a fresh user can claim in epoch 0 without a special case.
         if (lastClaimEpoch[msg.sender] == liveEpoch + 1) revert AlreadyClaimedThisEpoch();
-        if (claimedBy[tileIdx][liveEpoch] != address(0)) revert TileAlreadyClaimed();
+        if (tileClaim[tileIdx][liveEpoch].claimer != address(0)) revert TileAlreadyClaimed();
         if (ascend.balanceOf(msg.sender) < MIN_HOLDING) revert InsufficientHoldings();
         if (currentEpochPool == 0) revert EpochPoolEmpty();
+        // Daily 68% selection: pseudorandom but deterministic per
+        // (epochSeed[liveEpoch], msg.sender). The seed was set at the
+        // first activity of the epoch and cannot be predicted before
+        // its block was mined.
+        if (!_isSelected(msg.sender, liveEpoch)) revert NotSelectedThisEpoch();
 
         multiplier = _drawMultiplier(tileIdx);
 
@@ -209,7 +242,11 @@ contract TileEngine {
         uint256 remaining = currentEpochPool - currentEpochPaidOut;
         if (reward > remaining) reward = remaining;
 
-        claimedBy[tileIdx][liveEpoch] = msg.sender;
+        tileClaim[tileIdx][liveEpoch] = ClaimRecord({
+            claimer: msg.sender,
+            multiplier: multiplier,
+            reward: uint128(reward)
+        });
         lastClaimEpoch[msg.sender] = liveEpoch + 1; // sentinel: "claimed in `liveEpoch`"
         currentEpochPaidOut += reward;
         epochPaidOut[liveEpoch] = currentEpochPaidOut;
@@ -245,22 +282,63 @@ contract TileEngine {
     /// @notice True if tile `idx` has not yet been flipped this epoch.
     function isTileAvailable(uint16 idx) external view returns (bool) {
         if (idx >= GRID_SIZE) return false;
-        return claimedBy[idx][currentEpoch()] == address(0);
+        return tileClaim[idx][currentEpoch()].claimer == address(0);
     }
 
-    /// @notice True if `user` is eligible to flip this epoch (holding +
-    ///         not already claimed).
+    /// @notice True if `user` is eligible to flip this epoch:
+    ///           - holds ≥ MIN_HOLDING ascend
+    ///           - hasn't already claimed this epoch
+    ///           - is in this epoch's randomly-selected 68% subset
     function canClaim(address user) external view returns (bool) {
         if (ascend.balanceOf(user) < MIN_HOLDING) return false;
-        return lastClaimEpoch[user] != currentEpoch() + 1;
+        uint64 e = currentEpoch();
+        if (lastClaimEpoch[user] == e + 1) return false;
+        return _isSelected(user, e);
+    }
+
+    /// @notice True if `user` is in the random selection cohort for `epoch`.
+    ///         Deterministic from (epochSeed[epoch], user). Returns false
+    ///         if the epoch's seed hasn't been set yet (i.e., no activity
+    ///         has activated that epoch on-chain).
+    function isSelected(address user, uint64 epoch) external view returns (bool) {
+        return _isSelected(user, epoch);
     }
 
     /// @notice Number of tiles still available in the current epoch.
     function tilesRemaining() external view returns (uint16 n) {
         uint64 e = currentEpoch();
         for (uint16 i = 0; i < GRID_SIZE; i++) {
-            if (claimedBy[i][e] == address(0)) n++;
+            if (tileClaim[i][e].claimer == address(0)) n++;
         }
+    }
+
+    /// @notice Returns the full claim record for every tile this epoch.
+    ///         The dapp uses this to render hover-flip detail (claimer
+    ///         tail + reward) on the 12×12 grid in a single read.
+    function epochTiles(uint64 epoch)
+        external
+        view
+        returns (ClaimRecord[GRID_SIZE] memory result)
+    {
+        for (uint16 i = 0; i < GRID_SIZE; i++) {
+            result[i] = tileClaim[i][epoch];
+        }
+    }
+
+    /// @notice Convenience wrapper: epochTiles for the current epoch.
+    function currentEpochTiles()
+        external
+        view
+        returns (ClaimRecord[GRID_SIZE] memory)
+    {
+        uint16[GRID_SIZE] memory _idx; // unused; satisfy stack
+        _idx; // silence unused
+        ClaimRecord[GRID_SIZE] memory result;
+        uint64 e = currentEpoch();
+        for (uint16 i = 0; i < GRID_SIZE; i++) {
+            result[i] = tileClaim[i][e];
+        }
+        return result;
     }
 
     // -----------------------------------------------------------------
@@ -268,19 +346,46 @@ contract TileEngine {
     // -----------------------------------------------------------------
 
     /// @dev If `block.timestamp` has crossed an epoch boundary, advance
-    ///      `liveEpoch` and roll forward unclaimed share. Idempotent.
+    ///      `liveEpoch` and roll forward unclaimed share. Also locks in
+    ///      this epoch's selection seed from the parent block's hash —
+    ///      unpredictable until that block is mined, deterministic
+    ///      thereafter.
     function _advanceEpochIfNeeded() private {
         uint64 nowEpoch = currentEpoch();
-        if (nowEpoch == liveEpoch) return;
 
-        // Roll over unclaimed share to the new epoch.
-        uint256 rollover = currentEpochPool - currentEpochPaidOut;
-        emit EpochAdvanced(liveEpoch, nowEpoch, rollover);
+        if (nowEpoch != liveEpoch) {
+            // Roll over unclaimed share to the new epoch.
+            uint256 rollover = currentEpochPool - currentEpochPaidOut;
+            emit EpochAdvanced(liveEpoch, nowEpoch, rollover);
 
-        liveEpoch = nowEpoch;
-        currentEpochPool = rollover;
-        currentEpochPaidOut = 0;
-        epochPool[nowEpoch] += rollover; // initial seed of new epoch from rollover
+            liveEpoch = nowEpoch;
+            currentEpochPool = rollover;
+            currentEpochPaidOut = 0;
+            epochPool[nowEpoch] += rollover; // initial seed of new epoch from rollover
+        }
+
+        // Lock the per-epoch selection seed exactly once, including
+        // for the genesis epoch (which never enters the advance branch
+        // because nowEpoch == liveEpoch == 0). blockhash of the parent
+        // block is unpredictable to anyone who didn't see the block
+        // included; once set, it's stable for selection queries by
+        // anyone for the rest of the epoch.
+        if (epochSeed[nowEpoch] == bytes32(0)) {
+            epochSeed[nowEpoch] = keccak256(
+                abi.encodePacked(blockhash(block.number - 1), block.prevrandao, nowEpoch)
+            );
+        }
+    }
+
+    /// @dev True iff `user` falls in the SELECTION_RATE_BPS / SELECTION_DENOM
+    ///      cohort for `epoch`. Deterministic from (epochSeed[epoch], user)
+    ///      after the seed is set. Returns false until the seed is set
+    ///      (which happens on the first on-chain activity of the epoch).
+    function _isSelected(address user, uint64 epoch) internal view returns (bool) {
+        bytes32 seed = epochSeed[epoch];
+        if (seed == bytes32(0)) return false;
+        uint256 r = uint256(keccak256(abi.encode(seed, user)));
+        return r % SELECTION_DENOM < SELECTION_RATE_BPS;
     }
 
     /// @dev Draws a multiplier from the locked weight table.
