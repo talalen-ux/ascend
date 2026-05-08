@@ -107,12 +107,49 @@ export const TILE_ENGINE_ABI = [
   { type: "function", name: "currentBaseReward", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "GRID_SIZE", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
   { type: "function", name: "EPOCH_LENGTH", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "SELECTION_RATE_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   {
     type: "function",
-    name: "claimedBy",
+    name: "tileClaim",
     stateMutability: "view",
     inputs: [{ type: "uint16" }, { type: "uint64" }],
-    outputs: [{ type: "address" }],
+    outputs: [
+      { type: "address", name: "claimer" },
+      { type: "uint8", name: "multiplier" },
+      { type: "uint128", name: "reward" },
+    ],
+  },
+  {
+    type: "function",
+    name: "epochTiles",
+    stateMutability: "view",
+    inputs: [{ type: "uint64" }],
+    outputs: [
+      {
+        type: "tuple[144]",
+        components: [
+          { type: "address", name: "claimer" },
+          { type: "uint8", name: "multiplier" },
+          { type: "uint128", name: "reward" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "currentEpochTiles",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {
+        type: "tuple[144]",
+        components: [
+          { type: "address", name: "claimer" },
+          { type: "uint8", name: "multiplier" },
+          { type: "uint128", name: "reward" },
+        ],
+      },
+    ],
   },
   {
     type: "function",
@@ -133,6 +170,13 @@ export const TILE_ENGINE_ABI = [
     name: "canClaim",
     stateMutability: "view",
     inputs: [{ type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "isSelected",
+    stateMutability: "view",
+    inputs: [{ type: "address" }, { type: "uint64" }],
     outputs: [{ type: "bool" }],
   },
   {
