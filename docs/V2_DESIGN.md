@@ -7,33 +7,74 @@ here. Implementation lives at `contracts/src/AscendHookV2.sol` and
 
 ## one-line summary
 
-A V4 hook that owns a full-range LP, retains 4% of every swap as
-ETH-side depth, channels 1% to a tile-flipping reward game, and
-enforces that the LP's lower tick (= the floor) is monotone
-non-decreasing. Single price for buyers and sellers. Real liquidity.
-Single-band chart. Holders earn from a flippable 12×12 tile grid that
-pays out 1×–4× multiples of the accumulated reward share.
+A V4 hook that owns a full-range LP, charges 1% on every swap +
+a flat $2 surcharge on each mint, splits 70% to LP depth / 30% to a
+tile-flipping reward game, and enforces that the LP's lower tick
+(= the floor) is monotone non-decreasing. Single price for buyers
+and sellers. Real liquidity. Single-band chart. Holders earn from a
+flippable 12×12 tile grid that pays out 1×–4× multiples. Per-tx mint
+cap, same-block-burn revert, and a randomized launch-window fee tax
+the deployment-block-tuned bots.
 
 ## locked parameters
 
-| symbol                | value           | notes                                                    |
-|-----------------------|-----------------|----------------------------------------------------------|
-| `SUPPLY_CAP`          | `122_000_000`   | hard cap, all minted at genesis (122M ascend)            |
-| `BOOTSTRAP_ETH`       | `1 ether`       | constructor enforces exact value                         |
-| `FEE_BPS`             | `500`           | 5% total on both sides                                   |
-| `LP_RETENTION_BPS`    | `400`           | 4% retained as ETH-side depth (compounds floor)          |
-| `TILE_BPS`            | `100`           | 1% routed to TileEngine reward pool                      |
-| `BPS_DENOM`           | `10_000`        |                                                          |
-| `LP_RANGE`            | full range      | tickLower = `MIN_TICK`, tickUpper = `MAX_TICK`           |
-| `TICK_SPACING`        | `60`            | standard for non-fee-tier pools                          |
-| pool `currency0`      | `address(0)`    | native ETH                                               |
-| pool `currency1`      | ascend ERC-20   | sole minter is the hook                                  |
-| pool `fee`            | dynamic         | hook charges its own fee via OVERRIDE flag               |
-| `REBALANCE_THRESHOLD` | `0.01 ether`    | min retained-fee buffer before re-LP'ing                 |
-| `REBALANCE_GUARD`     | EIP-1153 tload  | re-entrancy guard around the rebalance routine           |
-| `TILE_GRID`           | `144` (12×12)   | tiles per epoch                                          |
-| `EPOCH_LENGTH`        | `24 hours`      | tiles refresh at the start of each epoch                 |
-| `MIN_HOLDING`         | `1e18`          | 1 ascend minimum balance to claim a tile                 |
+| symbol                       | value           | notes                                                          |
+|------------------------------|-----------------|----------------------------------------------------------------|
+| `SUPPLY_CAP`                 | `122_000_000`   | hard cap, all minted at genesis (122M ascend)                  |
+| `BOOTSTRAP_ETH`              | `1 ether`       | constructor enforces exact value                               |
+| `SWAP_FEE_PIPS`              | `10_000`        | 1% base swap fee (V4 pips, where 1_000_000 = 100%)             |
+| `LP_SHARE_BPS`               | `7_000`         | 70% of fee → LP depth                                          |
+| `TILE_SHARE_BPS`             | `3_000`         | 30% of fee → TileEngine                                        |
+| `SHARE_DENOM`                | `10_000`        | denominator for the share split                                |
+| `MINT_FEE_WEI`               | `0.001 ether`   | flat surcharge per buy (~$2 at $2350/ETH)                      |
+| `MAX_MINT_WEI`               | `5 ether`       | per-tx mint cap (anti-MEV, sato pattern)                       |
+| `ANTI_BOT_BLOCKS`            | `100`           | randomized launch-window fee tax                               |
+| `ANTI_BOT_MAX_EXTRA_PIPS`    | `10_000`        | max extra fee during anti-bot window (+1%)                     |
+| `MAX_EFFECTIVE_FEE_PIPS`     | `100_000`       | hard cap (10%) — dust mints can't pay 100% fee                 |
+| `LP_RANGE`                   | full range      | tickLower = `MIN_TICK`, tickUpper = `MAX_TICK`                 |
+| `TICK_SPACING`               | `60`            | standard for non-fee-tier pools                                |
+| pool `currency0`             | `address(0)`    | native ETH                                                     |
+| pool `currency1`             | ascend ERC-20   | sole minter is the hook                                        |
+| pool `fee`                   | dynamic         | hook charges its own fee via OVERRIDE flag, per-swap            |
+| `REBALANCE_THRESHOLD`        | `0.01 ether`    | min retained-fee buffer before re-LP'ing                       |
+| `REBALANCE_GUARD`            | EIP-1153 tload  | re-entrancy guard around the rebalance routine                 |
+| `TILE_GRID`                  | `144` (12×12)   | tiles per epoch                                                |
+| `EPOCH_LENGTH`               | `24 hours`      | tiles refresh at the start of each epoch                       |
+| `MIN_HOLDING`                | `1e18`          | 1 ascend minimum balance to claim a tile                       |
+
+### effective fee curve (post mint-surcharge)
+
+The mint surcharge is encoded as a per-swap dynamic-fee adjustment:
+
+```
+mint_pips = (MINT_FEE_WEI · 1_000_000) / amountIn
+effective_pips = clamp(SWAP_FEE_PIPS + mint_pips + antiBotExtra,
+                       max = MAX_EFFECTIVE_FEE_PIPS)
+```
+
+Effective fee % at typical mint sizes:
+
+| `amountIn`         | mint surcharge | + base 1% | total fee (no anti-bot) |
+|--------------------|----------------|-----------|-------------------------|
+| 0.005 ETH ($12)    | ~20%           |  +1%      | ~21%                    |
+| 0.025 ETH ($59)    | ~4%            |  +1%      | ~5%                     |
+| 0.05 ETH ($118)    | ~2%            |  +1%      | ~3%                     |
+| 0.1 ETH ($235)     | ~1%            |  +1%      | ~2%                     |
+| 0.5 ETH ($1175)    | ~0.2%          |  +1%      | ~1.2%                   |
+| 1 ETH ($2350)      | ~0.1%          |  +1%      | ~1.1%                   |
+| 5 ETH ($11750)     | ~0.02%         |  +1%      | ~1.02%                  |
+
+Effect: small mints pay a relatively large %, large mints pay
+~1%. Acts as anti-spam without blocking serious buyers.
+
+### anti-MEV summary
+
+| mechanism                          | what                                                     |
+|------------------------------------|----------------------------------------------------------|
+| `MAX_MINT_WEI` per-tx cap (5 ETH)  | no one can vacuum supply in a single tx                  |
+| same-block burn-after-buy revert   | flash-loan arbitrage uneconomic (`tx.origin` keyed)      |
+| `ANTI_BOT_BLOCKS` window           | first 100 blocks: +0..1% random extra fee on mints       |
+| `MAX_EFFECTIVE_FEE_PIPS` hard cap  | dust mints can't pay >10% even with mint surcharge       |
 
 The `LP_RANGE = full range` choice is justified in
 `scripts/v2concentration.ts`: tighter ranges add risk of LP exhaustion
@@ -97,7 +138,7 @@ circulating supply.
   ```
   floor' / floor = (Y − ethOut) · circ / (Y · (circ − ascendIn))
   ```
-  with `ethOut < ascendIn · floor` because of the 5% fee retention.
+  with `ethOut < ascendIn · floor` because of the 1% fee retention.
   Substituting and simplifying yields `floor' ≥ floor`.
 
 Both sub-cases are proved by direct calculation; see Appendix A.
@@ -132,7 +173,7 @@ the pool key shape and locks the binding. Any swap on a different
 ```
 afterInitialize          true   — validate pool config + lock state
 beforeAddLiquidity       true   — reject all external LP adds
-beforeSwap               true   — apply 5% dynamic fee
+beforeSwap               true   — apply 1% + flat surcharge dynamic fee
 afterSwap                true   — accumulate fees + trigger rebalance
 beforeSwapReturnDelta    false  — pool curve is the truth
 afterSwapReturnDelta     false
@@ -169,21 +210,30 @@ bits of the address.
 ```
 beforeSwap(zeroForOne=true, amountSpecified=-ethIn):
     require(poolId == bound)
-    fee_bps = 500                      // 5% via dynamic fee override
-    return (selector, ZERO_DELTA, fee_bps | OVERRIDE_FEE_FLAG)
+    require(ethIn > MINT_FEE_WEI)            // anti-spam floor
+    require(ethIn <= MAX_MINT_WEI)           // 5 ETH per-tx mint cap
+    lastBuyBlock[tx.origin] = block.number   // anti-flash-loan marker
+    fee_pips = computeBuyFee(ethIn)
+       = clamp(SWAP_FEE_PIPS                  // 10_000 (1%)
+             + (MINT_FEE_WEI · 1e6 / ethIn)   // mint surcharge
+             + antiBotExtra(),                // [0, +1%] for first 100 blocks
+              max = MAX_EFFECTIVE_FEE_PIPS)   // 10% absolute cap
+    return (selector, ZERO_DELTA, fee_pips | OVERRIDE_FEE_FLAG)
 
-[poolManager runs the swap normally; 5% of ethIn lands in the hook
- via fee_bps. The remaining 95% trades against the LP curve.]
+[poolManager runs the swap normally; the effective fee accrues to the
+ LP position (we are sole LP). collected later via rebalance().]
 
 afterSwap(...):
-    accumulatedFees += fees received
-    if accumulatedFees > REBALANCE_THRESHOLD:
-        rebalance()
+    no-op — V4 tracks fees natively in the position state.
+
+beforeSwap(zeroForOne=false, amountSpecified=-ascendIn):
+    require(lastBuyBlock[tx.origin] != block.number)
+    fee_pips = SWAP_FEE_PIPS  // flat 1%, no surcharge on sells
 ```
 
 ### sell (currency1 → currency0, exact-input)
 
-Same as buy but `zeroForOne=false`. 5% fee deducted from the ascend side
+Same as buy but `zeroForOne=false`. 1% fee deducted from the ascend side
 on input; the hook receives ascend, which the rebalance routine adds
 back to the LP at a higher floor tick.
 
@@ -232,7 +282,7 @@ doesn't trigger rebalance: ~30k overhead beyond a vanilla V4 swap.
 
 Because the position is full-range and price-discovery happens through
 standard CP, there is no front-runnable rebalance. The fee retention is
-deterministic from `(amountIn, fee_bps)` and adds to depth uniformly
+deterministic from `(amountIn, fee_pips)` and adds to depth uniformly
 without changing the spot price. Sandwiches against the rebalance gain
 no edge.
 
@@ -250,7 +300,7 @@ the hook routes on every swap.
 ### the loop
 
 ```
-1. Every swap pays a 5% fee.
+1. Every swap pays a 1% fee.
    - 4% retained in the LP as ETH-side depth (floor lift)
    - 1% pushed to TileEngine.depositReward{value: ...}() as native ETH
 2. TileEngine accumulates the ETH into the current epoch's reward pool.
@@ -492,32 +542,43 @@ participate in v2's mining. There is no protocol-level migration.
 
 ## fee split — concrete numbers
 
-Per the `FEE_BPS = 500`, `LP_RETENTION_BPS = 400`, `TILE_BPS = 100`
-split, on every $100 of trade volume:
+Per `SWAP_FEE_PIPS = 10_000` (1%), `LP_SHARE_BPS = 7_000`, `TILE_SHARE_BPS = 3_000`,
+on every $100 of trade volume the base fee is:
 
 ```
-$5.00 = total fee
-$4.00 → LP depth (floor lift)
-$1.00 → TileEngine reward pool
+$1.00 = total swap fee
+$0.70 → LP depth (floor lift)
+$0.30 → TileEngine reward pool
 ```
 
-At sato-equivalent volume of $15M / 24h:
+Plus the flat $2 mint surcharge per buy, all of which routes
+through the same fee channel and splits 70/30 like the rest. So a
+$100 buy pays ~$3 in total ($1 base + $2 surcharge), and a $1000
+buy pays ~$12 ($10 base + $2 surcharge).
+
+At sato-equivalent volume of $15M / 24h (assume half is buys):
 ```
-$750k     fees collected per day
-$600k     compounded into LP (floor rises)
-$150k     into the tile pool
+$150k     base fees collected per day (1% × $15M)
+$~30k    mint surcharges per day (~$2 × ~15k mints)
+─────
+~$180k   total fees per day
+~$126k   compounded into LP (70%)
+~$54k    into the tile pool (30%)
 ```
 
-Per epoch (24h), tile pool of $150k → 144 tiles → expected
-$150k / 144 / 1.625 = $641 base reward → $641 to $2,564 per claim.
+Per epoch (24h), tile pool of $54k → 144 tiles → expected
+$54k / 144 / 1.625 = $231 base reward → $231 to $924 per claim.
 
-At $1M / 24h volume (more modest):
+At $1M / 24h volume (more modest, ~1k mints/day):
 ```
-$50k      fees per day
-$40k      LP depth
-$10k      tile pool
+$10k      base fees per day (1% × $1M)
+$2k       mint surcharges per day (~$2 × ~1k mints)
+─────
+$12k      total fees
+$8.4k     LP depth
+$3.6k     tile pool
 ```
-Tile rewards: $43 to $171 per claim.
+Tile rewards: $15 to $62 per claim.
 
 Tile rewards are a meaningful incentive for holders without being
 large enough to dominate token economics.

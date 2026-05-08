@@ -19,6 +19,38 @@ conventions.
 remain in-tree for reference until v2 is shipped, after which v1 should
 be removed. Audit items below are for v2.
 
+### post-option-A protections (added after the initial audit)
+
+The option-A pivot added a layer of anti-MEV / anti-bot protections.
+Each is reviewed inline below:
+
+- `MAX_MINT_WEI = 5 ether` per-tx mint cap → bounds single-tx supply
+  consumption. Same as sato.
+- `MINT_FEE_WEI = 0.001 ether` flat surcharge → anti-spam on tiny
+  mints; encoded as a per-swap dynamic-fee adjustment so V4's fee
+  routing handles it natively.
+- `lastBuyBlock[tx.origin]` same-block-burn revert → flash-loan
+  arbitrage is uneconomic.
+- `ANTI_BOT_BLOCKS = 100` randomized launch-window fee tax → bots
+  pay an extra ~0.5% on average for the first 100 blocks.
+- `MAX_EFFECTIVE_FEE_PIPS = 100_000` (10%) hard cap → dust mints
+  can't silently incur 100% fees from the surcharge math.
+
+### option-A uses tx.origin
+
+The same-block-burn guard and the anti-bot RNG mix `tx.origin`. This
+is the correct identifier for bot defense (the EOA initiating the
+call chain), but worth flagging as a known caveat:
+
+- Smart-contract wallets (Safe, etc.) interact via tx.origin = EOA
+  signer, which is fine.
+- ERC-4337 paymasters / bundlers may use a different tx.origin; the
+  user-perceived sender is `userOp.sender`, not tx.origin. This
+  could let some 4337 flows bypass the same-block guard.
+- This is acceptable: 4337 flash-loan arbitrage at launch is an
+  unlikely vector; the guard is a probabilistic deterrent, not a
+  cryptographic guarantee.
+
 ## severity scale
 
 | level         | meaning                                                     |
@@ -33,6 +65,33 @@ be removed. Audit items below are for v2.
 ---
 
 ## CRITICAL
+
+### ~~C-5~~ — Fee unit confusion: `FEE_BPS = 500` was 0.05%, not 5% — **FIXED**
+
+**file:** `contracts/src/AscendHookV2.sol`
+**function:** `_beforeSwap`
+
+V4's dynamic fee unit is **pips** (1_000_000 = 100%), not basis
+points. The constant `FEE_BPS = 500` returned via the
+`OVERRIDE_FEE_FLAG` was charging **0.05% on-chain**, not the 5%
+documented and assumed in every analysis (sims, design doc,
+audit). Floor compounding rate, tile pool fill rate, every
+economic projection — all overstated by 100×.
+
+**Resolution:** option-A pivot rewrote the fee model entirely.
+Constant renamed to `SWAP_FEE_PIPS` to make the unit explicit, set
+to `10_000` (1% — option-A spec). Fee split tracked in basis
+points (`LP_SHARE_BPS = 7_000`, `TILE_SHARE_BPS = 3_000`,
+`SHARE_DENOM = 10_000`).
+
+Caught during the option-A code review. Would have been caught
+by H-2 (forge tests against real PoolManager) once those run, but
+shipping without the test suite would have meant a 100× under-
+collected protocol on day one.
+
+**Status:** FIXED.
+
+
 
 ### ~~C-1~~ — `_afterSwap` is a stub; fee split is not implemented — **REWRITTEN**
 
