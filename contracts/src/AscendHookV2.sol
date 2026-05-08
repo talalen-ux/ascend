@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {BaseHook} from "v4-periphery/utils/BaseHook.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
@@ -361,7 +362,7 @@ contract AscendHookV2 is BaseHook {
     function _beforeAddLiquidity(
         address sender,
         PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
+        ModifyLiquidityParams calldata,
         bytes calldata
     ) internal view override returns (bytes4) {
         // The hook itself is allowed to add liquidity (genesis seed +
@@ -394,7 +395,7 @@ contract AscendHookV2 is BaseHook {
     function _beforeSwap(
         address,
         PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
+        SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         if (!isInitialized) revert NotInitialized();
@@ -481,7 +482,7 @@ contract AscendHookV2 is BaseHook {
     function _afterSwap(
         address,
         PoolKey calldata,
-        IPoolManager.SwapParams calldata,
+        SwapParams calldata,
         BalanceDelta,
         bytes calldata
     ) internal virtual override returns (bytes4, int128) {
@@ -519,7 +520,7 @@ contract AscendHookV2 is BaseHook {
         // V4 returns a positive BalanceDelta for fees owed to the LP.
         BalanceDelta feesDelta = poolManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
                 liquidityDelta: 0,
@@ -643,7 +644,7 @@ contract AscendHookV2 is BaseHook {
 
         BalanceDelta delta = poolManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
                 liquidityDelta: int256(uint256(liquidity)),

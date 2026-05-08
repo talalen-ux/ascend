@@ -65,7 +65,7 @@ contract Deploy is Script {
             currency1: Currency.wrap(address(hook.ascend())),
             fee: 0, // no AMM fee — hook charges its own
             tickSpacing: TICK_SPACING,
-            hooks: hook
+            hooks: IHooks(address(hook))
         });
 
         // 5. Initialize the pool. The starting sqrtPriceX96 is irrelevant

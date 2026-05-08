@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
@@ -136,7 +137,7 @@ contract AscendRouter is IUnlockCallback {
         //    and returns a BeforeSwapDelta that cancels the AMM portion.
         BalanceDelta delta = poolManager.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true,
                 amountSpecified: -int256(cb.amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -167,7 +168,7 @@ contract AscendRouter is IUnlockCallback {
         //    delta that cancels the AMM portion.
         BalanceDelta delta = poolManager.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: false,
                 amountSpecified: -int256(cb.amountIn),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1

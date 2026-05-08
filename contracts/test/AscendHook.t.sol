@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "v4-core/../test/utils/Deployers.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
@@ -11,7 +12,7 @@ import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {HookMiner} from "v4-periphery/utils/HookMiner.sol";
-import {PoolSwapTest} from "v4-core/../test/utils/PoolSwapTest.sol";
+import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 
 import {AscendHook} from "../src/AscendHook.sol";
 import {AscendRouter} from "../src/AscendRouter.sol";
@@ -106,7 +107,7 @@ contract AscendHookTest is Test, Deployers {
         vm.expectRevert(AscendHook.LiquidityNotAllowed.selector);
         modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: -120,
                 tickUpper: 120,
                 liquidityDelta: 1e18,
@@ -132,7 +133,7 @@ contract AscendHookTest is Test, Deployers {
         vm.expectRevert();
         swapTest.swap{value: 1 ether}(
             key,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true,
                 amountSpecified: int256(1 ether), // positive = exact-output
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -244,7 +245,7 @@ contract AscendHookTest is Test, Deployers {
 
     function test_priceIsTwiceFloorAtGenesis() public view {
         // BASE_PREMIUM_BPS = 100% and cumulativeEthIn = 0 at genesis → price = 2 × floor
-        assertEq(hook.price(), 2 * hook.floor(), "price != 2 × floor at genesis");
+        assertEq(hook.price(), 2 * hook.floor(), "price != 2 * floor at genesis");
         assertEq(hook.cumulativeEthIn(), 0);
         assertEq(hook.premiumBps(), 10_000);
     }
@@ -321,7 +322,7 @@ contract AscendHookTest is Test, Deployers {
         vm.prank(alice);
         BalanceDelta delta = swapTest.swap{value: 1 ether}(
             key,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true,
                 amountSpecified: -1 ether,
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1

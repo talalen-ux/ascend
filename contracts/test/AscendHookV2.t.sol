@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "v4-core/../test/utils/Deployers.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -12,7 +13,7 @@ import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {HookMiner} from "v4-periphery/utils/HookMiner.sol";
-import {PoolSwapTest} from "v4-core/../test/utils/PoolSwapTest.sol";
+import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 
 import {AscendHookV2} from "../src/AscendHookV2.sol";
 import {Ascend} from "../src/Ascend.sol";
@@ -31,7 +32,7 @@ contract AscendHookV2Test is Test, Deployers {
 
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
-    address carol = address(0xCAR01);
+    address carol = address(0xCA801);
 
     // Initial sqrtPrice for 1 ETH : 122M ascend (price = 122M ascend per ETH).
     // sqrt(122_000_000) × 2^96 ≈ 8.749e32. Computed in setUp.
@@ -133,7 +134,7 @@ contract AscendHookV2Test is Test, Deployers {
         vm.expectRevert(AscendHookV2.LiquidityNotAllowed.selector);
         modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: -120,
                 tickUpper: 120,
                 liquidityDelta: 1e18,
@@ -347,7 +348,7 @@ contract AscendHookV2Test is Test, Deployers {
         vm.prank(actor);
         swapTest.swap{value: amount}(
             key,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true,
                 amountSpecified: -int256(amount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -362,7 +363,7 @@ contract AscendHookV2Test is Test, Deployers {
         ascend.approve(address(swapTest), amount);
         swapTest.swap(
             key,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: false,
                 amountSpecified: -int256(amount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
