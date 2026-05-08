@@ -2,17 +2,17 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {Deployers} from "v4-core/../test/utils/Deployers.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {HookMiner} from "v4-periphery/utils/HookMiner.sol";
-import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 
 import {AscendHook} from "../src/AscendHook.sol";
 import {AscendRouter} from "../src/AscendRouter.sol";
@@ -25,8 +25,8 @@ contract AscendHookTest is Test, Deployers {
     AscendHook hook;
     AscendRouter router;
     Ascend ascend;
-    PoolKey key;
-    PoolId id;
+    PoolKey poolKey;
+    PoolId poolIdLocal;
 
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
@@ -53,15 +53,15 @@ contract AscendHookTest is Test, Deployers {
         ascend = hook.ascend();
 
         // Build the canonical pool key and initialize the pool.
-        key = PoolKey({
+        poolKey = PoolKey({
             currency0: CurrencyLibrary.ADDRESS_ZERO,
             currency1: Currency.wrap(address(ascend)),
             fee: 0,
             tickSpacing: 60,
             hooks: hook
         });
-        manager.initialize(key, 79228162514264337593543950336); // 1.0
-        id = key.toId();
+        manager.initialize(poolKey, 79228162514264337593543950336); // 1.0
+        poolIdLocal = poolKey.toId();
 
         // Router for one-call swaps.
         router = new AscendRouter(IPoolManager(address(manager)), hook);
@@ -106,7 +106,7 @@ contract AscendHookTest is Test, Deployers {
     function test_addingLiquidityIsRejected() public {
         vm.expectRevert(AscendHook.LiquidityNotAllowed.selector);
         modifyLiquidityRouter.modifyLiquidity(
-            key,
+            poolKey,
             ModifyLiquidityParams({
                 tickLower: -120,
                 tickUpper: 120,
@@ -132,7 +132,7 @@ contract AscendHookTest is Test, Deployers {
         vm.prank(alice);
         vm.expectRevert();
         swapTest.swap{value: 1 ether}(
-            key,
+            poolKey,
             SwapParams({
                 zeroForOne: true,
                 amountSpecified: int256(1 ether), // positive = exact-output
@@ -321,7 +321,7 @@ contract AscendHookTest is Test, Deployers {
         vm.deal(alice, 5 ether);
         vm.prank(alice);
         BalanceDelta delta = swapTest.swap{value: 1 ether}(
-            key,
+            poolKey,
             SwapParams({
                 zeroForOne: true,
                 amountSpecified: -1 ether,

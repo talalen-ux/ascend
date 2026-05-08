@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 import {AscendHookV2} from "./AscendHookV2.sol";
 import {Ascend} from "./Ascend.sol";

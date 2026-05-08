@@ -2,9 +2,9 @@
 pragma solidity ^0.8.26;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {HookMiner} from "v4-periphery/utils/HookMiner.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 
 import {AscendHookV2} from "../src/AscendHookV2.sol";
 import {Genesis} from "../src/Genesis.sol";

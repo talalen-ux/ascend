@@ -2,18 +2,18 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {Deployers} from "v4-core/../test/utils/Deployers.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {HookMiner} from "v4-periphery/utils/HookMiner.sol";
-import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 
 import {AscendHookV2} from "../src/AscendHookV2.sol";
 import {Ascend} from "../src/Ascend.sol";
@@ -26,8 +26,8 @@ contract AscendHookV2Test is Test, Deployers {
     AscendHookV2 hook;
     Ascend ascend;
     TileEngine tile;
-    PoolKey key;
-    PoolId id;
+    PoolKey poolKey;
+    PoolId poolIdLocal;
     PoolSwapTest swapTest;
 
     address alice = address(0xA11CE);
@@ -72,7 +72,7 @@ contract AscendHookV2Test is Test, Deployers {
         sqrtPriceInitial = _computeSqrtPriceX96(122_000_000);
 
         // Build pool key: ETH ↔ ascend, dynamic fee, hook attached.
-        key = PoolKey({
+        poolKey = PoolKey({
             currency0: CurrencyLibrary.ADDRESS_ZERO,
             currency1: Currency.wrap(address(ascend)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
@@ -82,8 +82,8 @@ contract AscendHookV2Test is Test, Deployers {
 
         // Initialize pool — hook's afterInitialize re-enters via unlock
         // and seeds the genesis LP atomically.
-        manager.initialize(key, sqrtPriceInitial);
-        id = key.toId();
+        manager.initialize(poolKey, sqrtPriceInitial);
+        poolIdLocal = poolKey.toId();
 
         // Standard test swap router for direct PoolManager swaps.
         swapTest = new PoolSwapTest(IPoolManager(address(manager)));
@@ -133,7 +133,7 @@ contract AscendHookV2Test is Test, Deployers {
     function test_addLiquidityIsRejectedFromExternal() public {
         vm.expectRevert(AscendHookV2.LiquidityNotAllowed.selector);
         modifyLiquidityRouter.modifyLiquidity(
-            key,
+            poolKey,
             ModifyLiquidityParams({
                 tickLower: -120,
                 tickUpper: 120,
@@ -347,7 +347,7 @@ contract AscendHookV2Test is Test, Deployers {
         vm.deal(actor, actor.balance + amount);
         vm.prank(actor);
         swapTest.swap{value: amount}(
-            key,
+            poolKey,
             SwapParams({
                 zeroForOne: true,
                 amountSpecified: -int256(amount),
@@ -362,7 +362,7 @@ contract AscendHookV2Test is Test, Deployers {
         vm.startPrank(actor);
         ascend.approve(address(swapTest), amount);
         swapTest.swap(
-            key,
+            poolKey,
             SwapParams({
                 zeroForOne: false,
                 amountSpecified: -int256(amount),
@@ -378,7 +378,7 @@ contract AscendHookV2Test is Test, Deployers {
     ///      stubbed here for the test scaffold.
     function _readSqrtPrice() internal view returns (uint160) {
         // In a real run, use:
-        //   import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+        //   import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
         //   using StateLibrary for IPoolManager;
         //   (sqrtP,,,) = manager.getSlot0(id);
         // For this scaffold, return a placeholder.

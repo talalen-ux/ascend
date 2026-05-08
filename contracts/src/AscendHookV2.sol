@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseHook} from "v4-periphery/utils/BaseHook.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
-import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {SafeCast} from "v4-core/libraries/SafeCast.sol";
-import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {LiquidityAmounts} from "v4-periphery/libraries/LiquidityAmounts.sol";
+import {BaseHook} from "@openzeppelin/uniswap-hooks/src/base/BaseHook.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 import {Ascend} from "./Ascend.sol";
 import {TileEngine} from "./TileEngine.sol";
@@ -279,17 +279,14 @@ contract AscendHookV2 is BaseHook {
         if (sqrtPriceX96 == 0) return 0;
 
         // 2. Compute the position's underlying reserves at the current
-        //    price. For our full-range position this is exact.
-        uint160 sqrtLowerX96 = TickMath.getSqrtPriceAtTick(tickLower);
-        uint160 sqrtUpperX96 = TickMath.getSqrtPriceAtTick(tickUpper);
-
-        (uint256 ethActive, uint256 ascendActive) =
-            LiquidityAmounts.getAmountsForLiquidity(
-                sqrtPriceX96,
-                sqrtLowerX96,
-                sqrtUpperX96,
-                liquidityHeld
-            );
+        //    price. For full-range LP the standard formulas reduce to:
+        //      amount0 (ETH)    = L · 2^96 / sqrtPrice
+        //      amount1 (ascend) = L · sqrtPrice / 2^96
+        //    This is exact for [MIN_TICK, MAX_TICK] positions.
+        uint256 L = uint256(liquidityHeld);
+        uint256 sqrtP = uint256(sqrtPriceX96);
+        uint256 ethActive = (L << 96) / sqrtP;
+        uint256 ascendActive = (L * sqrtP) >> 96;
 
         // 3. `circulating` = supply outside the LP. Includes any ascend
         //    held by the hook itself (always 0 in steady state, but
@@ -399,7 +396,7 @@ contract AscendHookV2 is BaseHook {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         if (!isInitialized) revert NotInitialized();
-        if (key.toId() != poolId) revert WrongPool();
+        if (PoolId.unwrap(key.toId()) != PoolId.unwrap(poolId)) revert WrongPool();
         if (params.amountSpecified > 0) revert ExactOutputUnsupported();
 
         uint256 amountIn = uint256(-params.amountSpecified);
@@ -518,7 +515,7 @@ contract AscendHookV2 is BaseHook {
     function _doRebalance() private {
         // Collect any uncollected fees by issuing a zero-delta modify.
         // V4 returns a positive BalanceDelta for fees owed to the LP.
-        BalanceDelta feesDelta = poolManager.modifyLiquidity(
+        (, BalanceDelta feesDelta) = poolManager.modifyLiquidity(
             poolKey,
             ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -642,7 +639,7 @@ contract AscendHookV2 is BaseHook {
             SUPPLY_CAP
         );
 
-        BalanceDelta delta = poolManager.modifyLiquidity(
+        (BalanceDelta delta, ) = poolManager.modifyLiquidity(
             poolKey,
             ModifyLiquidityParams({
                 tickLower: tickLower,

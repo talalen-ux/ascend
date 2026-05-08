@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseHook} from "v4-periphery/utils/BaseHook.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
+import {BaseHook} from "@openzeppelin/uniswap-hooks/src/base/BaseHook.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {
     BeforeSwapDelta,
     BeforeSwapDeltaLibrary,
     toBeforeSwapDelta
-} from "v4-core/types/BeforeSwapDelta.sol";
-import {SafeCast} from "v4-core/libraries/SafeCast.sol";
+} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {Ascend} from "./Ascend.sol";
 
@@ -328,7 +328,7 @@ contract AscendHook is BaseHook {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         if (!isInitialized) revert NotInitialized();
-        if (key.toId() != poolId) revert WrongPool();
+        if (PoolId.unwrap(key.toId()) != PoolId.unwrap(poolId)) revert WrongPool();
         if (params.amountSpecified > 0) revert ExactOutputUnsupported();
 
         _enter();
