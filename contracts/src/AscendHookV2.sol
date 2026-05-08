@@ -37,9 +37,12 @@ import {TileEngine} from "./TileEngine.sol";
 /// @dev    Locked parameters per `docs/V2_DESIGN.md`:
 ///           SUPPLY_CAP         122_000_000 ascend (1e18 each → 122M·1e18)
 ///           BOOTSTRAP_ETH      1 ether (constructor enforces exact value)
-///           FEE_BPS            500 (5%, applied via dynamic-fee override)
-///           LP_RETENTION_BPS   400 (4% to LP depth)
-///           TILE_BPS           100 (1% to TileEngine)
+///           SWAP_FEE_PIPS      10_000 (1%, applied via dynamic-fee override)
+///           LP_SHARE_BPS       7_000 (70% of fee → LP depth)
+///           TILE_SHARE_BPS     3_000 (30% of fee → TileEngine)
+///           MINT_FEE_WEI       0.001 ETH (~$2) flat surcharge per buy
+///           MAX_MINT_WEI       5 ether per-tx mint cap (anti-MEV)
+///           ANTI_BOT_BLOCKS    100-block randomized fee window
 ///           LP_RANGE           full range
 ///           pool fee           dynamic (hook overrides per swap)
 ///
@@ -74,12 +77,41 @@ contract AscendHookV2 is BaseHook {
     /// @notice Genesis ETH locked into the LP. Constructor enforces exact value.
     uint256 public constant BOOTSTRAP_ETH = 1 ether;
 
-    /// @notice 5% total fee on both sides. Applied via V4's dynamic-fee
-    ///         override and split as 4% to LP depth, 1% to tile pool.
-    uint24 public constant FEE_BPS = 500;
-    uint24 public constant LP_RETENTION_BPS = 400;
-    uint24 public constant TILE_BPS = 100;
-    uint24 public constant BPS_DENOM = 10_000;
+    /// @notice 1% total swap fee on both sides. V4's fee unit is pips
+    ///         (1_000_000 = 100%), so 1% = 10_000. Applied via the
+    ///         dynamic-fee override flag in beforeSwap.
+    uint24 public constant SWAP_FEE_PIPS = 10_000;
+
+    /// @notice Fee split. Of every fee collected:
+    ///           70% retained as LP-side depth (compounds the floor)
+    ///           30% routed to the TileEngine reward pool
+    uint16 public constant LP_SHARE_BPS = 7_000;
+    uint16 public constant TILE_SHARE_BPS = 3_000;
+    uint16 public constant SHARE_DENOM = 10_000;
+
+    /// @notice Flat per-buy mint surcharge (~$2 at $2,350/ETH). Anti-spam
+    ///         + extra revenue. Routed entirely to the TileEngine via
+    ///         the dynamic-fee mechanism: we encode it as an extra
+    ///         pip-percentage of the swap, computed per swap by amount.
+    ///         Naturally scales with ETH price.
+    uint256 public constant MINT_FEE_WEI = 0.001 ether;
+
+    /// @notice Per-tx mint cap. No single buy can vacuum a meaningful
+    ///         share of supply (sato pattern).
+    uint256 public constant MAX_MINT_WEI = 5 ether;
+
+    /// @notice Window after deploy in which an extra randomized fee is
+    ///         applied to mints — taxes deployment-block-tuned bots.
+    uint64 public constant ANTI_BOT_BLOCKS = 100;
+
+    /// @notice Maximum extra pips added during the anti-bot window.
+    ///         Random in [0, ANTI_BOT_MAX_EXTRA_PIPS].
+    uint24 public constant ANTI_BOT_MAX_EXTRA_PIPS = 10_000; // up to +1%
+
+    /// @notice Cap on the effective fee. V4 enforces ≤ MAX_LP_FEE
+    ///         (1_000_000 = 100%) but we cap stricter to avoid silent
+    ///         100%-fee mints on dust amounts. 10% absolute cap.
+    uint24 public constant MAX_EFFECTIVE_FEE_PIPS = 100_000;
 
     /// @notice Rebalance is gated on this much accumulated fee to amortize
     ///         the gas cost of `removeLiquidity` + `addLiquidity` across
@@ -90,10 +122,15 @@ contract AscendHookV2 is BaseHook {
     ///         `constructor`. Sole minter forever.
     Ascend public immutable ascend;
 
-    /// @notice The tile-game contract. Receives 1% of every swap.
+    /// @notice The tile-game contract. Receives the tile-share of every
+    ///         swap fee plus the entire MINT_FEE per buy.
     ///         Deployed by this hook in the constructor, address is
     ///         immutable thereafter.
     TileEngine public immutable tileEngine;
+
+    /// @notice Block number at which this hook was deployed. Used to
+    ///         clamp the anti-bot window.
+    uint256 public immutable deploymentBlock;
 
     // -----------------------------------------------------------------
     // pool state (set once, in afterInitialize)
@@ -105,6 +142,11 @@ contract AscendHookV2 is BaseHook {
     int24 public tickLower;       // = TickMath.minUsableTick(TICK_SPACING)
     int24 public tickUpper;       // = TickMath.maxUsableTick(TICK_SPACING)
     uint128 public liquidityHeld; // L of our single LP position
+
+    /// @notice Last block in which `tx.origin` initiated a buy. Used to
+    ///         revert sells in the same block as a buy (anti-flash-loan
+    ///         arbitrage, sato pattern).
+    mapping(address => uint256) public lastBuyBlock;
 
     // Note: V4 natively tracks accumulated fees inside the LP position
     // state. We don't shadow that with a `pendingFees` mirror — the
@@ -155,6 +197,10 @@ contract AscendHookV2 is BaseHook {
     error UnknownCallback();
     error CallerNotPoolManager();
     error UnexpectedDelta();
+    error ExactOutputUnsupported();
+    error MintAmountTooSmall();
+    error MintAmountTooLarge();
+    error SameBlockSellAfterBuy();
 
     // -----------------------------------------------------------------
     // unlock callback dispatch
@@ -181,6 +227,7 @@ contract AscendHookV2 is BaseHook {
         ascend = new Ascend(address(this));
         ascend.mint(address(this), SUPPLY_CAP);
         tileEngine = new TileEngine(address(this), ascend);
+        deploymentBlock = block.number;
     }
 
     // -----------------------------------------------------------------
@@ -329,24 +376,63 @@ contract AscendHookV2 is BaseHook {
     }
 
     // -----------------------------------------------------------------
-    // beforeSwap — apply 5% dynamic fee, route to hook (slice 6 work)
+    // beforeSwap — dynamic fee + anti-MEV gates
     // -----------------------------------------------------------------
+    //
+    // Buys (zeroForOne):
+    //   1. revert if amount ≤ MINT_FEE_WEI (would mint zero ascend)
+    //   2. revert if amount > MAX_MINT_WEI (per-tx mint cap)
+    //   3. record lastBuyBlock[tx.origin] for the same-block-burn guard
+    //   4. compute effective fee:
+    //        base = SWAP_FEE_PIPS (1%)
+    //        + flat = MINT_FEE_WEI as a % of swap (capped)
+    //        + anti-bot extra (random in [0, ANTI_BOT_MAX_EXTRA_PIPS])
+    //          for the first ANTI_BOT_BLOCKS blocks after deploy
+    //        cap total at MAX_EFFECTIVE_FEE_PIPS (10%)
+    //
+    // Sells (oneForZero):
+    //   1. revert if tx.origin bought in the current block
+    //   2. apply flat SWAP_FEE_PIPS (1%)
+    //
+    // The fee accrues to the LP position (we are the sole LP); rebalance()
+    // collects it later and splits 70/30 LP/TileEngine.
 
     function _beforeSwap(
         address,
         PoolKey calldata key,
-        IPoolManager.SwapParams calldata,
+        IPoolManager.SwapParams calldata params,
         bytes calldata
-    ) internal view override returns (bytes4, BeforeSwapDelta, uint24) {
+    ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         if (!isInitialized) revert NotInitialized();
         if (key.toId() != poolId) revert WrongPool();
+        if (params.amountSpecified > 0) revert ExactOutputUnsupported();
 
-        // Override pool fee with our 5% — V4 routes the fee to this hook
-        // because the pool is set up with LP_FEE_OVERRIDE; the LP itself
-        // collects 0.
-        uint24 fee = uint24(FEE_BPS) | LPFeeLibrary.OVERRIDE_FEE_FLAG;
+        uint256 amountIn = uint256(-params.amountSpecified);
+        uint24 effectiveFeePips;
 
-        // No delta override — let the pool curve be the truth.
+        if (params.zeroForOne) {
+            // Buy: ETH → ascend
+            if (amountIn <= MINT_FEE_WEI) revert MintAmountTooSmall();
+            if (amountIn > MAX_MINT_WEI) revert MintAmountTooLarge();
+
+            // Same-block-burn guard: record the buy block.
+            // tx.origin is the EOA initiating the call chain — robust
+            // against router wrappers, less robust against contract
+            // wallets. Acceptable for an anti-MEV measure.
+            lastBuyBlock[tx.origin] = block.number;
+
+            effectiveFeePips = _computeBuyFeePips(amountIn);
+        } else {
+            // Sell: ascend → ETH
+            if (lastBuyBlock[tx.origin] == block.number) {
+                revert SameBlockSellAfterBuy();
+            }
+            effectiveFeePips = SWAP_FEE_PIPS;
+        }
+
+        uint24 fee = effectiveFeePips | LPFeeLibrary.OVERRIDE_FEE_FLAG;
+
+        // No delta override — pool curve is the truth.
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee);
     }
 
@@ -363,6 +449,41 @@ contract AscendHookV2 is BaseHook {
     // Anyone can call rebalance() when accumulated fees ≥
     // REBALANCE_THRESHOLD; bots and holders are economically motivated
     // because rebalance lifts the floor for everyone holding ascend.
+
+    /// @dev Compute the effective fee in pips for a buy of `amountIn`.
+    ///
+    ///   base               = SWAP_FEE_PIPS (1%)
+    ///   mint surcharge     = (MINT_FEE_WEI / amountIn) × 1_000_000 pips
+    ///   anti-bot extra     = random [0, ANTI_BOT_MAX_EXTRA_PIPS] for the
+    ///                        first ANTI_BOT_BLOCKS blocks after deploy
+    ///   total              = clamped to MAX_EFFECTIVE_FEE_PIPS
+    ///
+    /// The mint surcharge is the on-chain encoding of the "$2 flat fee
+    /// per mint": for a small swap it's a relatively large % (anti-spam),
+    /// for a 5 ETH swap it's 0.02% (negligible).
+    function _computeBuyFeePips(uint256 amountIn) private view returns (uint24) {
+        // pips = (MINT_FEE_WEI * 1_000_000) / amountIn
+        // safe because amountIn > MINT_FEE_WEI (checked above) so pips < 1_000_000
+        uint256 mintFeePips = (MINT_FEE_WEI * 1_000_000) / amountIn;
+        uint256 total = uint256(SWAP_FEE_PIPS) + mintFeePips;
+
+        if (block.number < deploymentBlock + ANTI_BOT_BLOCKS) {
+            uint256 r = uint256(
+                keccak256(
+                    abi.encode(
+                        blockhash(block.number - 1),
+                        block.prevrandao,
+                        tx.origin,
+                        amountIn
+                    )
+                )
+            );
+            total += r % (uint256(ANTI_BOT_MAX_EXTRA_PIPS) + 1);
+        }
+
+        if (total > MAX_EFFECTIVE_FEE_PIPS) total = MAX_EFFECTIVE_FEE_PIPS;
+        return uint24(total);
+    }
 
     function _afterSwap(
         address,
@@ -385,8 +506,8 @@ contract AscendHookV2 is BaseHook {
     //   1. modifyLiquidity(delta=0) → BalanceDelta of accrued fees
     //   2. take both currencies from PoolManager
     //   3. ETH split:
-    //        TILE_BPS / FEE_BPS  to tileEngine.depositReward (1/5)
-    //        LP_RETENTION_BPS / FEE_BPS  back to LP via donate (4/5)
+    //        TILE_SHARE_BPS / SHARE_DENOM  to tileEngine.depositReward (30%)
+    //        LP_SHARE_BPS / SHARE_DENOM    back to LP via donate (70%)
     //   4. ascend fees: donate fully back to LP (compounds X-side depth)
     //
     // Effect: Y_LP grows by lpEthPortion, X_LP grows by ascendFees,
@@ -436,9 +557,8 @@ contract AscendHookV2 is BaseHook {
         }
 
         // Split the ETH portion: 4% LP retention, 1% to TileEngine.
-        // (TILE_BPS / FEE_BPS = 100/500 = 20% of the fee, which IS the 1%
-        // we promised since fee itself is 5% of swap value.)
-        uint256 tilePortion = (ethFees * TILE_BPS) / FEE_BPS;
+        // 30% to TileEngine, 70% retained as LP depth (compounds floor).
+        uint256 tilePortion = (ethFees * TILE_SHARE_BPS) / SHARE_DENOM;
         uint256 lpEthPortion = ethFees - tilePortion;
 
         // Forward the tile portion. Wrapped in try/catch so a buggy
