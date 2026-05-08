@@ -58,15 +58,17 @@ the $2 is rounding error.
 ### 4. The 12×12 tile lottery (this is the unique part)
 
 There's a separate contract called the "TileEngine" that has a 12×12
-grid of 144 tiles. Once every 24 hours, **anyone holding at least 1
-ascend** can click one tile and flip it.
+grid of 144 tiles. Once every 24 hours, **a random 68% of holders are
+selected** for that day's lottery — only those holders can flip a tile
+and claim a reward. The other 32% wait until tomorrow, when a new
+draw happens.
 
 When you flip a tile, it reveals a random multiplier between 1× and
 4×, and you get paid **in ETH** based on that multiplier. (The pool
 is filled with ETH from the 30% fee share, so claims pay ETH back to
 the holder's wallet directly.)
 
-The exact odds:
+The multiplier odds:
 - **62.5%** chance of 1× (smallest payout)
 - **18.75%** chance of 2×
 - **12.5%** chance of 3×
@@ -77,8 +79,21 @@ mentioned above. So the more people trade ascend, the bigger the
 daily prizes. If almost nobody trades, the daily prize is small. If
 trading is active, the daily prize is real money.
 
-Each address only gets one tile flip per day. If you don't claim,
-your share rolls into tomorrow's pot.
+**Why 68% and not everyone?** Two reasons:
+- It keeps the daily reward feeling rare and special, instead of
+  becoming a flat-rate yield.
+- The 32% who don't get selected today still benefit: their share of
+  the day's pool rolls into tomorrow, making tomorrow's pool bigger.
+  So the lottery never "evaporates" — value just moves to the next
+  day's draw.
+
+The selection is random per epoch — your address gets a fresh roll
+every day. Over time, you'll be selected on roughly 68% of days, but
+on any given day it could be either way. The dapp tells you whether
+you're in or out before you even try to claim.
+
+If you're selected, you get one tile flip. If you don't claim by the
+end of the epoch, your share rolls into the next epoch's pot.
 
 ### 5. There's no team, no admin, no secret backdoor
 

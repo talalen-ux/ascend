@@ -40,6 +40,8 @@ the deployment-block-tuned bots.
 | `TILE_GRID`                  | `144` (12×12)   | tiles per epoch                                                |
 | `EPOCH_LENGTH`               | `24 hours`      | tiles refresh at the start of each epoch                       |
 | `MIN_HOLDING`                | `1e18`          | 1 ascend minimum balance to claim a tile                       |
+| `SELECTION_RATE_BPS`         | `6800`          | 68% of holders are randomly selected per epoch                 |
+| `SELECTION_DENOM`            | `10_000`        | denominator for selection rate                                 |
 
 ### effective fee curve (post mint-surcharge)
 
@@ -330,13 +332,24 @@ the hook routes on every swap.
    - 1% pushed to TileEngine.depositReward{value: ...}() as native ETH
 2. TileEngine accumulates the ETH into the current epoch's reward pool.
 3. At the start of every 24h epoch, 144 tiles become claimable.
-4. Any address with ≥ 1 ascend can claim ONE tile per epoch.
-5. claimTile(uint256 idx) flips the tile:
+4. **68% random selection.** Each epoch, the engine seeds an RNG from
+   `keccak(parent_blockhash, prevrandao, epoch)`. From this seed,
+   each address falls deterministically into either the selected
+   cohort (68% of all addresses) or the skipped cohort (32%). Only
+   addresses in the selected cohort can claim that day. The other
+   32% wait until the next epoch — their roll is independent (a new
+   seed = a new draw), so over time everyone averages 68% of epochs.
+5. Any address with ≥ 1 ascend AND in this epoch's selected cohort
+   can claim ONE tile per epoch.
+6. claimTile(uint16 idx) flips the tile:
    - Pseudorandom multiplier ∈ {1, 2, 3, 4} drawn from
      keccak256(blockhash, idx, msg.sender, epoch)
    - Reward = (epoch_pool / 144) × multiplier
    - Capped by remaining pool to ensure solvency
-6. Unclaimed tiles' shares roll into next epoch's pool.
+7. Unclaimed tiles' shares roll into next epoch's pool. Combined with
+   the 32% non-selected cohort, the next epoch typically has a
+   meaningfully bigger pool than the previous one — making the
+   "back tomorrow" return cadence feel rewarding.
 ```
 
 ### multiplier distribution
@@ -400,45 +413,90 @@ provable fairness; left as an upgrade path.
 
 ### eligibility and frequency
 
-```
-struct ClaimRecord { uint64 epoch; uint8 multiplier; uint128 amount; }
-mapping(uint16 tileIdx => mapping(uint64 epoch => address claimer)) public claimedBy;
-mapping(address => uint64 lastClaimEpoch) public lastClaim;
+```solidity
+struct ClaimRecord { address claimer; uint8 multiplier; uint128 reward; }
+mapping(uint16 => mapping(uint64 => ClaimRecord)) public tileClaim;
+mapping(address => uint64) public lastClaimEpoch;
 
+// Inside claimTile():
+require(idx < GRID_SIZE, "out of range");
+require(tileClaim[idx][liveEpoch].claimer == address(0), "tile taken");
+require(lastClaimEpoch[msg.sender] != liveEpoch + 1, "already claimed");
 require(ascend.balanceOf(msg.sender) >= MIN_HOLDING, "no holding");
-require(lastClaim[msg.sender] < currentEpoch, "already claimed");
-require(claimedBy[idx][currentEpoch] == address(0), "tile taken");
-require(idx < 144, "out of range");
+require(currentEpochPool > 0, "epoch empty");
+require(_isSelected(msg.sender, liveEpoch), "not selected this epoch");
 ```
 
-Each address gets exactly one tile per epoch. Each tile can be claimed
-by exactly one address per epoch. The race for "good" tiles is
-incidental — all tiles use the same multiplier RNG, so there is no
-preferable tile.
+Each address gets exactly one tile per epoch *if selected*. Each tile
+can be claimed by exactly one address per epoch. The race for "good"
+tiles is incidental — all tiles use the same multiplier RNG, so there
+is no preferable tile.
+
+### the 68% selection mechanic
+
+```solidity
+mapping(uint64 => bytes32) public epochSeed;   // set once per epoch
+
+function _advanceEpochIfNeeded() private {
+    // ...rollover logic...
+    if (epochSeed[nowEpoch] == bytes32(0)) {
+        epochSeed[nowEpoch] = keccak256(
+            abi.encodePacked(blockhash(block.number - 1), block.prevrandao, nowEpoch)
+        );
+    }
+}
+
+function _isSelected(address user, uint64 epoch) internal view returns (bool) {
+    bytes32 seed = epochSeed[epoch];
+    if (seed == bytes32(0)) return false;
+    uint256 r = uint256(keccak256(abi.encode(seed, user)));
+    return r % SELECTION_DENOM < SELECTION_RATE_BPS;
+}
+```
+
+Properties:
+
+- **Deterministic per (seed, user)** — once the seed is set, the
+  cohort membership for every address is fixed for that epoch. The
+  dapp can preview "you're in this epoch" without sending a tx.
+- **Unpredictable until first activity** — the seed pulls from
+  `blockhash` and `prevrandao` at the first transaction in the
+  epoch. A holder cannot pre-compute next epoch's draw before that
+  block is mined.
+- **Independent across epochs** — a different seed each day means
+  a holder's membership is re-rolled. Over many epochs the law of
+  large numbers gives each holder ~68% of their potential claims.
+- **No special holder advantage** — holding more ascend doesn't
+  improve selection probability. Every address has the same 68%
+  chance independently.
 
 ### state
 
 ```solidity
 contract TileEngine {
-    address public immutable hook;            // only sender allowed for depositReward
-    Ascend  public immutable ascend;          // checked for MIN_HOLDING
+    address public immutable hook;
+    Ascend  public immutable ascend;
 
     uint64  public constant EPOCH_LENGTH = 24 hours;
     uint16  public constant GRID_SIZE = 144;
+    uint256 public constant MIN_HOLDING = 1e18;
+    uint256 public constant SELECTION_RATE_BPS = 6800;
+    uint256 public constant SELECTION_DENOM = 10_000;
     uint64  public immutable genesisTime;
 
-    uint256 public currentEpochPool;          // accumulating ETH for the live epoch
-    uint64  public currentEpochStart;         // unix ts when this epoch began
-    uint256 public unclaimedRollover;         // unclaimed share carried forward
+    uint256 public currentEpochPool;
+    uint256 public currentEpochPaidOut;
+    uint64  public liveEpoch;
 
     // history (analytics)
-    mapping(uint64 => uint256) public epochPool;        // total funded for that epoch
-    mapping(uint64 => uint256) public epochPaidOut;     // total paid out to claimers
+    mapping(uint64 => uint256) public epochPool;
+    mapping(uint64 => uint256) public epochPaidOut;
+    mapping(uint64 => bytes32) public epochSeed;
 
     // claim state
-    mapping(uint16 => mapping(uint64 => address)) public claimedBy;
+    struct ClaimRecord { address claimer; uint8 multiplier; uint128 reward; }
+    mapping(uint16 => mapping(uint64 => ClaimRecord)) public tileClaim;
     mapping(address => uint64) public lastClaimEpoch;
-    mapping(address => mapping(uint64 => ClaimRecord)) public lastClaim;
 }
 ```
 
@@ -453,9 +511,12 @@ function claimTile(uint16 tileIdx) external returns (uint8 multiplier, uint256 r
 
 // views
 function currentEpoch() external view returns (uint64);
-function currentBaseReward() external view returns (uint256);  // pool / GRID_SIZE / 1.58
+function currentBaseReward() external view returns (uint256);  // pool / GRID_SIZE / 1.625
 function isTileAvailable(uint16 idx) external view returns (bool);
 function canClaim(address user) external view returns (bool);
+function isSelected(address user, uint64 epoch) external view returns (bool);
+function epochTiles(uint64 epoch) external view returns (ClaimRecord[144] memory);
+function currentEpochTiles() external view returns (ClaimRecord[144] memory);
 ```
 
 ### connection to holdings
@@ -507,6 +568,18 @@ Unclaimed reward share doesn't disappear; it boosts the next epoch.
 #### TI-5. Bounded validator edge
 Worst-case validator manipulation per claim is bounded by
 `(4 − 1.625) × (epoch_pool / 144 / 1.625) ≈ 0.0101 × epoch_pool`.
+
+#### TI-6. Selection rate
+For any epoch with seed set, an address is in the selected cohort
+with probability exactly `SELECTION_RATE_BPS / SELECTION_DENOM = 0.68`
+under the assumption that keccak256 outputs are uniformly distributed
+modulo `SELECTION_DENOM`. Empirically verified in the test suite over
+500 sampled addresses (`test_selectionRateIsApproximately68Percent`).
+
+#### TI-7. Selection independence
+Two distinct epochs use different seeds (different blockhashes), so
+an address's selection status in epoch N is statistically independent
+of its status in epoch N±k for k ≠ 0. Each epoch is a fresh roll.
 
 ## reentrancy model
 

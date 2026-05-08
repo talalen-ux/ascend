@@ -549,6 +549,49 @@ Until v2 ships, both versions coexist. Recommendation: rename v1
 sources to `*.legacy.sol` or move under `contracts/src/legacy/` to
 prevent accidental deploy.
 
+### I-8 — TileEngine selection RNG predictability post-seed
+
+**file:** `contracts/src/TileEngine.sol`
+**function:** `_isSelected` + `_advanceEpochIfNeeded`
+
+The 68% per-epoch selection cohort is derived from
+`keccak(epochSeed[epoch], user)`. The `epochSeed` is set at the first
+on-chain activity of the epoch, drawn from `blockhash(block.number-1)`
+and `prevrandao`. Once that block is mined and the seed is set, every
+address's selection status for the entire epoch becomes deterministic
+and publicly computable.
+
+**Implications:**
+
+- **Pre-seed:** No one can predict who will be selected before the
+  seed-setting transaction is mined.
+- **Post-seed:** Any observer can compute, for any address, whether
+  it falls in this epoch's cohort. This is intended — the dapp
+  needs this for previewing "you're in today's draw".
+- **Validator manipulation of the seed:** A proposer who produces
+  the block that contains the seed-setting tx can choose the
+  blockhash to favor themselves. Their best strategy is to either
+  include or omit the seed-setting tx in their block depending on
+  which gives them a favorable cohort. They cannot change the seed
+  arbitrarily — only choose between "include in block N" vs "delay
+  to N+1". Since blockhashes are unpredictable until proposal time,
+  this gives validators a small information edge.
+
+**Worst-case validator strategy:** Hold many addresses, observe the
+parent blockhash before proposing, simulate `_isSelected` for each
+of their addresses, and choose to include vs delay the seeding tx
+based on which fork includes more of their addresses in the cohort.
+Maximum addresses they could swing: ≈ all of them, but only by ±1
+selection bit per epoch (the seed is one byte). Practical
+exploitation requires controlling the proposer slot AND having many
+addresses pre-funded with MIN_HOLDING ascend.
+
+**Recommendation:** For the gamification scope this is acceptable. A
+future revision could integrate Chainlink VRF to remove the
+proposer-influence completely. The function signature for `isSelected`
+is stable; switching the underlying randomness source doesn't break
+integrators.
+
 ---
 
 ## VERIFIED INVARIANTS (will be assertable in slice 8 tests)
