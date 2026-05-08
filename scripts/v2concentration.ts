@@ -19,17 +19,22 @@
 
 const ETH_USD = 2_350;
 const SUPPLY_CAP = 122_000_000;
-const FEE = 0.05;
+const FEE = 0.01;
+const MINT_FEE_ETH = 0.001;
+const MAX_MINT_ETH = 5;
 const BOOTSTRAP_ETH = 1;
 const STEPS = 1_000;
 
 type V2 = { X: number; Y: number };
 const initialV2 = (): V2 => ({ X: SUPPLY_CAP, Y: BOOTSTRAP_ETH });
 
-/** Concentrated-LP buy. c=1 reduces to plain constant-product. */
+/** Concentrated-LP buy. c=1 reduces to plain constant-product.
+ *  Includes the option-A fee model (1% + $2 surcharge, mint-cap-clamped). */
 function v2Buy(s: V2, ethIn: number, c: number): V2 {
-  const fee = ethIn * FEE;
+  if (ethIn <= MINT_FEE_ETH || ethIn > MAX_MINT_ETH) return s;
+  const fee = ethIn * FEE + MINT_FEE_ETH;
   const net = ethIn - fee;
+  if (net <= 0) return s;
   const Yv = s.Y * c;
   const Xv = s.X * c;
   const newYv = Yv + net;

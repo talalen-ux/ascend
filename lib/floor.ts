@@ -1,11 +1,14 @@
 /**
- * Off-chain mirror of the v2 engine math.
+ * Off-chain mirror of the v2 engine math (option A — 1% fee, $2 mint
+ * surcharge, anti-MEV).
  *
  *   v2 mechanics:
  *     - constant-product LP at full range, hook is the only LP
  *     - reserves (X, Y): X ascend in LP, Y ETH in LP
- *     - 5% fee on every swap; on rebalance, 4% donates back to LP
- *       (raises Y without minting), 1% goes to TileEngine
+ *     - 1% base swap fee on every trade
+ *     - on buys: additional flat $2 (≈ 0.001 ETH) surcharge encoded as
+ *       a per-swap dynamic-fee adjustment
+ *     - rebalance splits 70% to LP retention (raises Y), 30% to TileEngine
  *     - circulating = SUPPLY_CAP - X
  *     - floor = Y / circulating  (ETH per circulating ascend, the
  *               redemption guarantee)
@@ -22,15 +25,25 @@
 
 export const SUPPLY_CAP = 122_000_000;
 export const BOOTSTRAP_ETH = 1;
-export const FEE_BPS = 500;
-export const LP_RETENTION_BPS = 400;
-export const TILE_BPS = 100;
-export const BPS_DENOM = 10_000;
+
+// Pip units (V4-native; 1_000_000 = 100%).
+export const SWAP_FEE_PIPS = 10_000;          // 1%
+export const PIP_DENOM = 1_000_000;
+export const MAX_EFFECTIVE_FEE_PIPS = 100_000; // 10% cap
+
+// Fee split (basis points; 10_000 = 100% of fee).
+export const LP_SHARE_BPS = 7_000;
+export const TILE_SHARE_BPS = 3_000;
+export const SHARE_DENOM = 10_000;
+
+// Mint surcharge + per-tx mint cap.
+export const MINT_FEE_ETH = 0.001;            // ~$2 at $2350/ETH
+export const MAX_MINT_ETH = 5;
 
 // Convenience floats.
-export const FEE_RATE = FEE_BPS / BPS_DENOM;       // 0.05
-export const LP_RETENTION = LP_RETENTION_BPS / BPS_DENOM; // 0.04
-export const TILE_RATE = TILE_BPS / BPS_DENOM;     // 0.01
+export const SWAP_FEE_RATE = SWAP_FEE_PIPS / PIP_DENOM; // 0.01
+export const LP_SHARE = LP_SHARE_BPS / SHARE_DENOM;     // 0.7
+export const TILE_SHARE = TILE_SHARE_BPS / SHARE_DENOM; // 0.3
 
 export interface State {
   /// ETH currently in the LP.
@@ -68,17 +81,35 @@ export function fdvOf(s: State): number {
 }
 
 /**
+ * Compute the effective buy fee in pips for an `ethIn` mint, mirroring
+ * the on-chain `_computeBuyFeePips` (without the anti-bot random
+ * extra, which is non-deterministic). Used for accurate quotes.
+ */
+export function effectiveBuyFeePips(ethIn: number): number {
+  if (ethIn <= 0) return 0;
+  const mintPips = (MINT_FEE_ETH * PIP_DENOM) / ethIn;
+  const total = SWAP_FEE_PIPS + mintPips;
+  return Math.min(total, MAX_EFFECTIVE_FEE_PIPS);
+}
+
+/**
  * Quote a buy of `ethIn` ETH. Returns the ascend the user would receive,
- * the fee charged, and the post-swap floor + spot price.
+ * the effective fee, and the post-swap floor + spot price. Reverts
+ * (returns null) if `ethIn` is below `MINT_FEE_ETH` (would mint zero)
+ * or above `MAX_MINT_ETH` (per-tx cap).
  *
  * We model the rebalance as instantaneous (donation back into the LP
  * after each trade). On-chain, donation happens lazily via rebalance(),
  * but the floor invariant proof works either way.
  */
 export function quoteBuy(s: State, ethIn: number) {
-  if (ethIn <= 0) return null;
-  const fee = ethIn * FEE_RATE;
+  if (ethIn <= MINT_FEE_ETH) return null;
+  if (ethIn > MAX_MINT_ETH) return null;
+
+  const feePips = effectiveBuyFeePips(ethIn);
+  const fee = ethIn * (feePips / PIP_DENOM);
   const net = ethIn - fee;
+  if (net <= 0) return null;
 
   // CP swap: Y' = Y + net, X' = k / Y'
   const k = s.reserveEth * s.reserveAscend;
@@ -86,9 +117,10 @@ export function quoteBuy(s: State, ethIn: number) {
   const xAfterSwap = k / yAfterSwap;
   const ascendOut = s.reserveAscend - xAfterSwap;
 
-  // After fee retention: 4% of fee donates back to LP (raises Y); 1%
-  // leaves the LP system entirely (goes to tile pool).
-  const yFinal = yAfterSwap + fee * (LP_RETENTION_BPS / FEE_BPS);
+  // After fee retention: 70% of fee retained as ETH side (LP), 30%
+  // routed to TileEngine. For the floor projection we count only the
+  // LP-retained portion as added depth.
+  const yFinal = yAfterSwap + fee * LP_SHARE;
   const xFinal = xAfterSwap;
 
   const post: State = { reserveEth: yFinal, reserveAscend: xFinal };
@@ -96,8 +128,9 @@ export function quoteBuy(s: State, ethIn: number) {
   return {
     ascendOut,
     fee,
-    tilePortion: fee * (TILE_BPS / FEE_BPS),
-    lpRetention: fee * (LP_RETENTION_BPS / FEE_BPS),
+    feePips,
+    tilePortion: fee * TILE_SHARE,
+    lpRetention: fee * LP_SHARE,
     floorBefore: floorOf(s),
     floorAfter: floorOf(post),
     priceBefore: priceOf(s),
@@ -109,15 +142,15 @@ export function quoteBuy(s: State, ethIn: number) {
  * Quote a sell of `ascendIn` ascend. Returns ETH out, fee charged, and
  * post-swap floor + spot price.
  *
- * Sells deposit ascend into the LP and pull ETH out. The 5% fee is
- * charged in ascend (stays in LP, growing X). Of the ETH side, 4% of
- * the gross ETH-equivalent fee donates back, 1% to TileEngine.
+ * Sells pay a flat 1% fee — no surcharge, no anti-bot extra. Fee is
+ * charged in ascend (stays in LP, growing X). On rebalance, 70% of
+ * the ETH-equivalent fee is retained as LP depth, 30% to TileEngine.
  */
 export function quoteSell(s: State, ascendIn: number) {
   if (ascendIn <= 0) return null;
   if (ascendIn >= s.reserveAscend) return null;
 
-  const fee = ascendIn * FEE_RATE;
+  const fee = ascendIn * SWAP_FEE_RATE;
   const net = ascendIn - fee;
 
   // CP swap on net (fee stays in LP as ascend after the swap)
@@ -126,10 +159,8 @@ export function quoteSell(s: State, ascendIn: number) {
   const yAfterSwap = k / xAfterSwap;
   const ethOut = s.reserveEth - yAfterSwap;
 
-  // Fee retention: the 5% fee on the ascend side. 4% effectively donates
-  // back as additional X (already there, since fee stayed in pool); 1%
-  // worth (in ETH terms) is sourced from the LP retention. For the
-  // simple sim we treat the full fee as retained X.
+  // Fee retention: the 1% fee on the ascend side stays in the LP as X.
+  // The ETH side of the LP keeps the post-swap value (no addition).
   const xFinal = xAfterSwap + fee;
   const yFinal = yAfterSwap;
 
@@ -138,7 +169,7 @@ export function quoteSell(s: State, ascendIn: number) {
   return {
     ethOut,
     fee,
-    tilePortion: ethOut * (TILE_BPS / FEE_BPS),
+    tilePortion: fee * TILE_SHARE,
     floorBefore: floorOf(s),
     floorAfter: floorOf(post),
     priceBefore: priceOf(s),
@@ -174,13 +205,13 @@ export function simulateFloor(
     if (i % 2 === 1) {
       const q = quoteBuy(s, tradeEthBuy);
       if (q) {
-        const fee = tradeEthBuy * FEE_RATE;
+        const fee = tradeEthBuy * (q.feePips / PIP_DENOM);
         const net = tradeEthBuy - fee;
         const k = s.reserveEth * s.reserveAscend;
         const yAfter = s.reserveEth + net;
         const xAfter = k / yAfter;
         s = {
-          reserveEth: yAfter + fee * (LP_RETENTION_BPS / FEE_BPS),
+          reserveEth: yAfter + fee * LP_SHARE,
           reserveAscend: xAfter,
         };
       }
@@ -189,7 +220,7 @@ export function simulateFloor(
       const sellAmount = (SUPPLY_CAP - s.reserveAscend) * sellFraction * 0.01;
       const q = quoteSell(s, sellAmount);
       if (q) {
-        const fee = sellAmount * FEE_RATE;
+        const fee = sellAmount * SWAP_FEE_RATE;
         const net = sellAmount - fee;
         const k = s.reserveEth * s.reserveAscend;
         const xAfter = s.reserveAscend + net;

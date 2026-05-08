@@ -10,8 +10,8 @@
  * model:
  *   reserves (X, Y): X ascend in LP, Y ETH in LP
  *   spot_price = Y / X  (ETH per ascend)
- *   buy(e):  net = 0.95·e   →  walk CP from Y to Y+net, fee 0.05·e added to Y after
- *   sell(x): net = 0.95·x   →  walk CP from X to X+net, fee 0.05·x added to X after
+ *   buy(e):  fee = 0.01·e + MINT_FEE  net = e − fee  walk CP from Y to Y+net, fee retained
+ *   sell(x): fee = 0.01·x              net = x − fee  walk CP from X to X+net, fee retained
  *   floor(t) := Y(t) / (SUPPLY_CAP − X(t))   ETH per circulating ascend
  *                                            ↑ vault / circulating
  *
@@ -28,7 +28,9 @@
 
 const ETH_USD = 2_350;
 const SUPPLY_CAP = 122_000_000;
-const FEE = 0.05;
+const FEE = 0.01;            // 1% base swap fee (option A)
+const MINT_FEE_ETH = 0.001;  // ~$2 flat surcharge per buy
+const MAX_MINT_ETH = 5;      // per-tx mint cap
 const BOOTSTRAP_ETH = 1;
 const STEPS = 1_000;
 
@@ -36,8 +38,14 @@ type V2 = { X: number; Y: number };
 const initialV2 = (): V2 => ({ X: SUPPLY_CAP, Y: BOOTSTRAP_ETH });
 
 function v2Buy(s: V2, ethIn: number): V2 {
-  const fee = ethIn * FEE;
+  // Skip mints that would revert in the contract.
+  if (ethIn <= MINT_FEE_ETH || ethIn > MAX_MINT_ETH) return s;
+  // 1% base + flat $2 (= MINT_FEE_ETH). The flat surcharge is encoded
+  // as additional fee % at the contract level; here we model it as
+  // an additional flat fee in ETH.
+  const fee = ethIn * FEE + MINT_FEE_ETH;
   const net = ethIn - fee;
+  if (net <= 0) return s;
   const k = s.X * s.Y;
   const newY1 = s.Y + net;
   const newX = k / newY1;
@@ -59,9 +67,14 @@ function v2Sell(s: V2, ethValue: number): V2 {
 
 function runV2(mineUsd: number, redeemUsd: number): V2 {
   let s = initialV2();
-  const ethPerBuy = mineUsd / ETH_USD / STEPS;
+  // Auto-scale step count if a single naive step would exceed the
+  // per-tx mint cap. Larger volumes require more steps.
+  const totalEth = mineUsd / ETH_USD;
+  const minSteps = Math.ceil(totalEth / (MAX_MINT_ETH * 0.99));
+  const steps = Math.max(STEPS, minSteps);
+  const ethPerBuy = totalEth / steps;
   const ratio = mineUsd > 0 ? redeemUsd / mineUsd : 0;
-  for (let i = 0; i < STEPS; i++) {
+  for (let i = 0; i < steps; i++) {
     s = v2Buy(s, ethPerBuy);
     if (ratio > 0) s = v2Sell(s, ethPerBuy * ratio);
   }
@@ -115,7 +128,7 @@ function row(label: string, mineUsd: number, redeemUsd: number) {
   );
 }
 
-console.log(`v2 SIMULATION — single LP, single chart, 5% fee retained as depth`);
+console.log(`v2 SIMULATION — single LP, 1% fee + $2 mint surcharge, fee compounds floor`);
 console.log(`assumptions: ETH=$${ETH_USD}, supply cap ${(SUPPLY_CAP / 1e6).toFixed(0)}M, bootstrap ${BOOTSTRAP_ETH} ETH (~$${(BOOTSTRAP_ETH * ETH_USD).toFixed(0)})\n`);
 
 console.log("=== (1) volume scenarios — same inputs as sato comparison ===\n");
