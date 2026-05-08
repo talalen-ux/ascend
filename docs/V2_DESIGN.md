@@ -27,7 +27,6 @@ the deployment-block-tuned bots.
 | `TILE_SHARE_BPS`             | `3_000`         | 30% of fee → TileEngine                                        |
 | `SHARE_DENOM`                | `10_000`        | denominator for the share split                                |
 | `MINT_FEE_WEI`               | `0.001 ether`   | flat surcharge per buy (~$2 at $2350/ETH)                      |
-| `MAX_MINT_WEI`               | `5 ether`       | per-tx mint cap (anti-MEV, sato pattern)                       |
 | `ANTI_BOT_BLOCKS`            | `100`           | randomized launch-window fee tax                               |
 | `ANTI_BOT_MAX_EXTRA_PIPS`    | `10_000`        | max extra fee during anti-bot window (+1%)                     |
 | `MAX_EFFECTIVE_FEE_PIPS`     | `100_000`       | hard cap (10%) — dust mints can't pay 100% fee                 |
@@ -63,6 +62,7 @@ Effective fee % at typical mint sizes:
 | 0.5 ETH ($1175)    | ~0.2%          |  +1%      | ~1.2%                   |
 | 1 ETH ($2350)      | ~0.1%          |  +1%      | ~1.1%                   |
 | 5 ETH ($11750)     | ~0.02%         |  +1%      | ~1.02%                  |
+| 100 ETH ($235k)    | ~0.001%        |  +1%      | ~1.001%                 |
 
 Effect: small mints pay a relatively large %, large mints pay
 ~1%. Acts as anti-spam without blocking serious buyers.
@@ -71,10 +71,16 @@ Effect: small mints pay a relatively large %, large mints pay
 
 | mechanism                          | what                                                     |
 |------------------------------------|----------------------------------------------------------|
-| `MAX_MINT_WEI` per-tx cap (5 ETH)  | no one can vacuum supply in a single tx                  |
 | same-block burn-after-buy revert   | flash-loan arbitrage uneconomic (`tx.origin` keyed)      |
 | `ANTI_BOT_BLOCKS` window           | first 100 blocks: +0..1% random extra fee on mints       |
 | `MAX_EFFECTIVE_FEE_PIPS` hard cap  | dust mints can't pay >10% even with mint surcharge       |
+
+**Note:** there is no per-tx mint cap. A whale can buy any amount in a
+single tx; the only cap on damage is the constant-product slippage of
+the LP curve. This is a deliberate design choice — fair-launch
+maximalism — and means launch-day concentration risk is real. Buyers
+who want to avoid being walked into by a whale should bid alongside
+the genesis tx in the same block.
 
 The `LP_RANGE = full range` choice is justified in
 `scripts/v2concentration.ts`: tighter ranges add risk of LP exhaustion
@@ -211,7 +217,6 @@ bits of the address.
 beforeSwap(zeroForOne=true, amountSpecified=-ethIn):
     require(poolId == bound)
     require(ethIn > MINT_FEE_WEI)            // anti-spam floor
-    require(ethIn <= MAX_MINT_WEI)           // 5 ETH per-tx mint cap
     lastBuyBlock[tx.origin] = block.number   // anti-flash-loan marker
     fee_pips = computeBuyFee(ethIn)
        = clamp(SWAP_FEE_PIPS                  // 10_000 (1%)

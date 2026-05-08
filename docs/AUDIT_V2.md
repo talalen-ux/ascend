@@ -24,8 +24,6 @@ be removed. Audit items below are for v2.
 The option-A pivot added a layer of anti-MEV / anti-bot protections.
 Each is reviewed inline below:
 
-- `MAX_MINT_WEI = 5 ether` per-tx mint cap → bounds single-tx supply
-  consumption. Same as sato.
 - `MINT_FEE_WEI = 0.001 ether` flat surcharge → anti-spam on tiny
   mints; encoded as a per-swap dynamic-fee adjustment so V4's fee
   routing handles it natively.
@@ -35,6 +33,11 @@ Each is reviewed inline below:
   pay an extra ~0.5% on average for the first 100 blocks.
 - `MAX_EFFECTIVE_FEE_PIPS = 100_000` (10%) hard cap → dust mints
   can't silently incur 100% fees from the surcharge math.
+
+**Note:** the per-tx mint cap was removed by deliberate design
+choice. There is no upper bound on the size of a single buy. Launch-
+day concentration risk is real and accepted. The CP curve's natural
+slippage is the only economic friction on whale buys.
 
 ### option-A uses tx.origin
 

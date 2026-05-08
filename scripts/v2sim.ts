@@ -30,7 +30,6 @@ const ETH_USD = 2_350;
 const SUPPLY_CAP = 122_000_000;
 const FEE = 0.01;            // 1% base swap fee (option A)
 const MINT_FEE_ETH = 0.001;  // ~$2 flat surcharge per buy
-const MAX_MINT_ETH = 5;      // per-tx mint cap
 const BOOTSTRAP_ETH = 1;
 const STEPS = 1_000;
 
@@ -38,8 +37,9 @@ type V2 = { X: number; Y: number };
 const initialV2 = (): V2 => ({ X: SUPPLY_CAP, Y: BOOTSTRAP_ETH });
 
 function v2Buy(s: V2, ethIn: number): V2 {
-  // Skip mints that would revert in the contract.
-  if (ethIn <= MINT_FEE_ETH || ethIn > MAX_MINT_ETH) return s;
+  // Skip dust mints that would revert in the contract (per-tx mint
+  // cap removed; only the lower bound of MINT_FEE_ETH remains).
+  if (ethIn <= MINT_FEE_ETH) return s;
   // 1% base + flat $2 (= MINT_FEE_ETH). The flat surcharge is encoded
   // as additional fee % at the contract level; here we model it as
   // an additional flat fee in ETH.
@@ -67,14 +67,9 @@ function v2Sell(s: V2, ethValue: number): V2 {
 
 function runV2(mineUsd: number, redeemUsd: number): V2 {
   let s = initialV2();
-  // Auto-scale step count if a single naive step would exceed the
-  // per-tx mint cap. Larger volumes require more steps.
-  const totalEth = mineUsd / ETH_USD;
-  const minSteps = Math.ceil(totalEth / (MAX_MINT_ETH * 0.99));
-  const steps = Math.max(STEPS, minSteps);
-  const ethPerBuy = totalEth / steps;
+  const ethPerBuy = mineUsd / ETH_USD / STEPS;
   const ratio = mineUsd > 0 ? redeemUsd / mineUsd : 0;
-  for (let i = 0; i < steps; i++) {
+  for (let i = 0; i < STEPS; i++) {
     s = v2Buy(s, ethPerBuy);
     if (ratio > 0) s = v2Sell(s, ethPerBuy * ratio);
   }

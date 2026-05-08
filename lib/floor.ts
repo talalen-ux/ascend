@@ -36,9 +36,8 @@ export const LP_SHARE_BPS = 7_000;
 export const TILE_SHARE_BPS = 3_000;
 export const SHARE_DENOM = 10_000;
 
-// Mint surcharge + per-tx mint cap.
+// Mint surcharge.
 export const MINT_FEE_ETH = 0.001;            // ~$2 at $2350/ETH
-export const MAX_MINT_ETH = 5;
 
 // Convenience floats.
 export const SWAP_FEE_RATE = SWAP_FEE_PIPS / PIP_DENOM; // 0.01
@@ -95,8 +94,7 @@ export function effectiveBuyFeePips(ethIn: number): number {
 /**
  * Quote a buy of `ethIn` ETH. Returns the ascend the user would receive,
  * the effective fee, and the post-swap floor + spot price. Reverts
- * (returns null) if `ethIn` is below `MINT_FEE_ETH` (would mint zero)
- * or above `MAX_MINT_ETH` (per-tx cap).
+ * (returns null) if `ethIn` is below `MINT_FEE_ETH` (would mint zero).
  *
  * We model the rebalance as instantaneous (donation back into the LP
  * after each trade). On-chain, donation happens lazily via rebalance(),
@@ -104,7 +102,6 @@ export function effectiveBuyFeePips(ethIn: number): number {
  */
 export function quoteBuy(s: State, ethIn: number) {
   if (ethIn <= MINT_FEE_ETH) return null;
-  if (ethIn > MAX_MINT_ETH) return null;
 
   const feePips = effectiveBuyFeePips(ethIn);
   const fee = ethIn * (feePips / PIP_DENOM);
