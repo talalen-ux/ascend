@@ -41,7 +41,6 @@ import {TileEngine} from "./TileEngine.sol";
 ///           LP_SHARE_BPS       7_000 (70% of fee → LP depth)
 ///           TILE_SHARE_BPS     3_000 (30% of fee → TileEngine)
 ///           MINT_FEE_WEI       0.001 ETH (~$2) flat surcharge per buy
-///           MAX_MINT_WEI       5 ether per-tx mint cap (anti-MEV)
 ///           ANTI_BOT_BLOCKS    100-block randomized fee window
 ///           LP_RANGE           full range
 ///           pool fee           dynamic (hook overrides per swap)
@@ -95,10 +94,6 @@ contract AscendHookV2 is BaseHook {
     ///         pip-percentage of the swap, computed per swap by amount.
     ///         Naturally scales with ETH price.
     uint256 public constant MINT_FEE_WEI = 0.001 ether;
-
-    /// @notice Per-tx mint cap. No single buy can vacuum a meaningful
-    ///         share of supply (sato pattern).
-    uint256 public constant MAX_MINT_WEI = 5 ether;
 
     /// @notice Window after deploy in which an extra randomized fee is
     ///         applied to mints — taxes deployment-block-tuned bots.
@@ -200,7 +195,6 @@ contract AscendHookV2 is BaseHook {
     error UnexpectedDelta();
     error ExactOutputUnsupported();
     error MintAmountTooSmall();
-    error MintAmountTooLarge();
     error SameBlockSellAfterBuy();
 
     // -----------------------------------------------------------------
@@ -382,9 +376,8 @@ contract AscendHookV2 is BaseHook {
     //
     // Buys (zeroForOne):
     //   1. revert if amount ≤ MINT_FEE_WEI (would mint zero ascend)
-    //   2. revert if amount > MAX_MINT_WEI (per-tx mint cap)
-    //   3. record lastBuyBlock[tx.origin] for the same-block-burn guard
-    //   4. compute effective fee:
+    //   2. record lastBuyBlock[tx.origin] for the same-block-burn guard
+    //   3. compute effective fee:
     //        base = SWAP_FEE_PIPS (1%)
     //        + flat = MINT_FEE_WEI as a % of swap (capped)
     //        + anti-bot extra (random in [0, ANTI_BOT_MAX_EXTRA_PIPS])
@@ -414,7 +407,6 @@ contract AscendHookV2 is BaseHook {
         if (params.zeroForOne) {
             // Buy: ETH → ascend
             if (amountIn <= MINT_FEE_WEI) revert MintAmountTooSmall();
-            if (amountIn > MAX_MINT_WEI) revert MintAmountTooLarge();
 
             // Same-block-burn guard: record the buy block.
             // tx.origin is the EOA initiating the call chain — robust
