@@ -420,20 +420,20 @@ pool automatically once their indexers cover the chain.
 
 ## 7 · comparisons
 
-| | **bitcoin** | **OHM (Olympus)** | **sato** | **ascend** |
+| | **bitcoin** | **OHM (Olympus)** | **bonding-curve V4 hooks** | **ascend** |
 |---|---|---|---|---|
 | supply | asymptotic at 21M | rebasing | asymptotic at K | reflexive (grows on mine, shrinks on redeem) |
 | floor / backing | none | treasury, governed | none | vault / supply, monotone |
-| price function | external (market) | rebase + bond | `(S/K)·e^(E/S)` | `floor · (1 + premium)` |
+| price function | external (market) | rebase + bond | exponential bonding curve | `floor · (1 + premium)` |
 | sells affect price? | yes (market) | yes (rebase debasement) | yes (curve reverses) | **no — sells lift the floor** |
 | admin | none | DAO | none | none |
 | upgrade path | none | governance | none | **none** |
 
-against **sato** specifically: sato is a closed-form bonding curve. its
-price is reversible (sells unwind the curve) and there is no floor
-backing. ascend layers a vault-backed floor underneath and a ratcheting
-premium on top, producing irreversible MC growth and a hard redemption
-guarantee.
+against **bonding-curve hook tokens**: those use a closed-form curve
+where price is reversible — sells unwind the curve and there is no
+floor backing. ascend layers a vault-backed floor underneath and a
+ratcheting premium on top, producing irreversible MC growth and a
+hard redemption guarantee.
 
 against **OHM**: OHM uses a treasury, governance, and rebasing.
 ascend has no treasury (the vault is bilaterally owed to holders), no

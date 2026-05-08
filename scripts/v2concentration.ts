@@ -89,7 +89,7 @@ const cases: [string, number, number][] = [
   ["$50k mined, no sells",   50_000,         0],
   ["$200k mined, no sells",  200_000,        0],
   ["$1M / $800k sold",       1_000_000,      800_000],
-  ["sato 24h ($15M / $14M)", 15_000_000,     14_000_000],
+  ["active 24h ($15M / $14M)", 15_000_000,   14_000_000],
   ["aggressive: $50M / $40M", 50_000_000,    40_000_000],
 ];
 
@@ -131,8 +131,8 @@ for (const c of concentrations) {
   );
 }
 
-console.log(`\n=== sato comparability — liq/MC ratio across c ===\n`);
-console.log(`sato observed: liq/MC ≈ 6.5%\n`);
+console.log(`\n=== liquidity-to-MC ratio across c ===\n`);
+console.log(`reference: a healthy listed token has liq/MC in the 1–10% range.\n`);
 console.log(`scenario              c=1     c=2     c=5     c=10    c=25`);
 for (const [name, mine, redeem] of cases) {
   const ratios = concentrations.map((c) => {

@@ -561,7 +561,7 @@ through the same fee channel and splits 70/30 like the rest. So a
 $100 buy pays ~$3 in total ($1 base + $2 surcharge), and a $1000
 buy pays ~$12 ($10 base + $2 surcharge).
 
-At sato-equivalent volume of $15M / 24h (assume half is buys):
+At a meaningful active-trading volume of $15M / 24h (assume half is buys):
 ```
 $150k     base fees collected per day (1% × $15M)
 $~30k    mint surcharges per day (~$2 × ~15k mints)
@@ -720,7 +720,7 @@ This means:
 |-----------------------|----------|------------|
 | $200k mined, no sells | $468k    | $13.8M     |
 | $1M / $800k churn     | $889k    | $6.2M      |
-| sato 24h ($15M / $14M)| $46.8M   | $140M      |
+| $15M / $14M (active 24h)| $46.8M   | $140M      |
 
 v2 reaches higher headline MC because supply scarcity on the CP curve
 combined with permanent fee retention compounds harder than v1's

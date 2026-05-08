@@ -126,11 +126,11 @@ function row(label: string, mineUsd: number, redeemUsd: number) {
 console.log(`v2 SIMULATION — single LP, 1% fee + $2 mint surcharge, fee compounds floor`);
 console.log(`assumptions: ETH=$${ETH_USD}, supply cap ${(SUPPLY_CAP / 1e6).toFixed(0)}M, bootstrap ${BOOTSTRAP_ETH} ETH (~$${(BOOTSTRAP_ETH * ETH_USD).toFixed(0)})\n`);
 
-console.log("=== (1) volume scenarios — same inputs as sato comparison ===\n");
+console.log("=== (1) volume scenarios — daily mining + redemption profiles ===\n");
 row("$200k mined, no sells", 200_000, 0);
 row("$1M mined, $800k sold (net +$200k)", 1_000_000, 800_000);
 row("$5M mined, $4.8M sold (net +$200k)", 5_000_000, 4_800_000);
-row("sato 24h: $15M mined, $14M sold", 15_000_000, 14_000_000);
+row("active 24h: $15M mined, $14M sold", 15_000_000, 14_000_000);
 row("$50M mined, no sells", 50_000_000, 0);
 row("$50M mined, $40M sold", 50_000_000, 40_000_000);
 
@@ -183,7 +183,7 @@ console.log(`────────────────────  ─�
 const compareCases: [string, number, number, string, string][] = [
   ["$200k mine, 0 sells",      200_000,         0,    "$468k",  "2.5×"],
   ["$1M mine, $800k sells",    1_000_000,    800_000, "$889k",  "3.9×"],
-  ["sato 24h ($15M / $14M)",   15_000_000, 14_000_000, "$46.8M", "29×"],
+  ["active 24h ($15M / $14M)", 15_000_000, 14_000_000, "$46.8M", "29×"],
 ];
 for (const [name, mine, redeem, v1mc, v1spread] of compareCases) {
   const s = runV2(mine, redeem);
