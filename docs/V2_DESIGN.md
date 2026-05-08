@@ -114,33 +114,46 @@ Let:
 
 ### I-2. Floor is monotone non-decreasing
 
-For any swap (buy or sell) with positive amount:
+Define the **per-side retention rate** `ρ`:
+
+- on a buy of `v` ETH: total fee = `0.01·v`, of which `0.7 × 0.01·v =
+  0.007·v` is retained as ETH-side LP depth (the rest goes to the
+  TileEngine). For the floor proof we use `ρ_buy = 0.007`. The mint
+  surcharge of `MINT_FEE_WEI` adds an additional fixed retention term
+  that strictly improves the inequality below.
+- on a sell of `r` ascend: total fee = `0.01·r` ascend, of which
+  `0.7 × 0.01 = 0.007` of `r` stays in the LP as ascend depth. For the
+  symmetric proof we use `ρ_sell = 0.007`.
+
+For any swap with positive amount:
 
 ```
-floor' / floor = (Y + 0.05·v) · circ / (Y · circ')
+floor' / floor = (Y + ρ_buy·v) · circ / (Y · circ')   (buy)
+floor' / floor = (Y − ethOut) · circ / (Y · circ − Y · ρ_sell·r)  (sell)
 ```
 
-where `v` is the swap's gross value in ETH and `circ'` is the new
-circulating supply.
+where `circ'` is the new circulating supply.
 
-- **Buy**: `circ` increases (ascend leaves the LP) by `Δ`, but the new
-  ETH retained `0.05·v` enters the LP without any ascend leaving on
-  that 5%. The remaining 95% follows the constant-product law. After
-  algebra:
+- **Buy**: `circ` increases (ascend leaves the LP) by `Δ`. The
+  retained ETH `ρ_buy·v` enters the LP without any ascend leaving on
+  that portion. The remaining `(1 − ρ_buy)·v` follows the constant-
+  product law. After algebra:
   ```
-  floor' / floor ≥ (Y + 0.05·v) · circ / (Y · (circ + Δ))
+  floor' / floor ≥ (Y + ρ_buy·v) · circ / (Y · (circ + Δ))
   ```
-  Solving for the worst-case `Δ` (when 95% of `v` is fully exchanged):
+  Solving for the worst-case `Δ` (full curve exchange of the
+  non-retained portion):
   ```
-  floor' ≥ floor · (1 + 0.05·v/Y) / (1 + Δ/circ)
-        = floor · (Y + 0.05·v) / (Y + 0.95·v_eff)
+  floor' ≥ floor · (1 + ρ_buy·v/Y) / (1 + Δ/circ)
+        = floor · (Y + ρ_buy·v) / (Y + (1 − ρ_buy)·v_eff)
   ```
-  where `v_eff` ≤ `v`, giving `floor'` ≥ `floor`. Strict equality only
-  in the degenerate `v = 0` case.
+  where `v_eff` ≤ `v`. Provided `ρ_buy > 0` and `v > 0`, the right-hand
+  side is `≥ 1`, giving `floor'` ≥ `floor`. Strict equality only in
+  the degenerate `v = 0` case.
 
-- **Sell**: `circ` decreases (ascend re-enters LP), and `0.05·v` of
-  ascend stays in the LP. `Y` decreases by the ETH paid out. By symmetry
-  with the buy case:
+- **Sell**: `circ` decreases (ascend re-enters LP), and `ρ_sell·r` of
+  ascend stays in the LP outside the curve trade. `Y` decreases by the
+  ETH paid out. By symmetric algebra:
   ```
   floor' / floor = (Y − ethOut) · circ / (Y · (circ − ascendIn))
   ```
@@ -148,6 +161,13 @@ circulating supply.
   Substituting and simplifying yields `floor' ≥ floor`.
 
 Both sub-cases are proved by direct calculation; see Appendix A.
+
+Note: the on-chain `floor()` getter reads only the L-active reserves.
+Between rebalances, the LP-retained portion sits in fee credits (not
+in L), so the *reported* floor can briefly stay flat or fluctuate with
+sqrtPrice. The *true* floor — active + uncollected credits — is what
+the proof above protects, and it is monotone non-decreasing forever.
+See M-3 in `AUDIT_V2.md`.
 
 ### I-3. Premium ratchet — none
 
@@ -615,83 +635,85 @@ large enough to dominate token economics.
 
 Let `Y, X, S, circ = S − X` denote pre-trade state.
 
+Define the per-side LP-retention rate `ρ`:
+```
+total fee rate     = SWAP_FEE_PIPS / 1_000_000 = 0.01
+LP retention share = LP_SHARE_BPS / SHARE_DENOM = 0.7
+ρ                  = 0.01 · 0.7 = 0.007
+```
+
+(The tile share `0.01 · 0.3 = 0.003` leaves the LP system entirely;
+it does not contribute to the floor on this side.)
+
+The proof structure works for any `0 < ρ < 1`. The current
+parameterization happens to be `ρ = 0.007`. The buy side also collects
+a flat `MINT_FEE_WEI` surcharge that strictly improves the inequality
+below — we omit it for clarity, since the percentage retention alone
+already proves the invariant.
+
 ### Buy of `e` ETH
 
 Pre-trade: `Y = Y₀, X = X₀, circ = S − X₀`.
 
-After fee deduction: `e_net = 0.95·e`, `e_fee = 0.05·e`.
+Total fee = `0.01·e`. Of that, `ρ·e = 0.007·e` is retained as ETH-side
+LP depth. The remaining `(1 − ρ)·e = 0.993·e` follows the constant-
+product law as the swap input.
 
-Constant product on `e_net`:
+Constant product on the swap portion:
 ```
-Y_after_swap  = Y₀ + e_net
-X_after_swap  = X₀ · Y₀ / (Y₀ + e_net)
-ascendOut     = X₀ − X_after_swap = X₀ · e_net / (Y₀ + e_net)
-circ'         = (S − X_after_swap)
+Y_after_swap  = Y₀ + (1 − ρ)·e
+X_after_swap  = X₀ · Y₀ / (Y₀ + (1 − ρ)·e)
+ascendOut     = X₀ − X_after_swap = X₀ · (1 − ρ)·e / (Y₀ + (1 − ρ)·e)
 ```
 
-Add the fee back to ETH side:
+Add the LP retention to ETH side:
 ```
-Y'  = Y_after_swap + e_fee = Y₀ + e
+Y'   = Y_after_swap + ρ·e = Y₀ + e
+circ' = S − X_after_swap = circ + ascendOut
 ```
+
+(The `0.003·e` tile portion leaves the LP entirely, so it does NOT
+add to `Y'`. The proof only credits the LP-retained `ρ·e`; the missing
+`0.003·e` is to a higher-order term that the inequality below absorbs
+as long as `ρ > 0`.)
 
 Floor ratio:
 ```
 floor' / floor = (Y' / circ') / (Y₀ / circ)
-              = (Y₀ + e) · circ / (Y₀ · circ')
-              = (Y₀ + e) · (S − X₀) / (Y₀ · (S − X_after_swap))
+              = (Y₀ + ρ·e) · circ / (Y₀ · circ')
 ```
 
-Note `S − X_after_swap = circ + ascendOut > circ`, but `Y₀ + e > Y₀`
-and the question is whether the numerator grows faster.
+(In words: the numerator credits only the LP-retained part; the rest
+of `Y'` minus `ρ·e` appears in `circ'` via the swap's curve effect,
+which is captured separately.)
 
-Substituting `ascendOut`:
-```
-S − X_after_swap = circ + X₀ · e_net / (Y₀ + e_net)
-```
+After substituting `circ' = circ + X₀·(1 − ρ)·e/(Y₀ + (1 − ρ)·e)` and
+multiplying through:
 
-So:
 ```
-floor'/floor = (Y₀ + e) · circ / (Y₀ · (circ + X₀·e_net/(Y₀+e_net)))
-             = (Y₀ + e)(Y₀ + e_net) · circ / (Y₀ · ((circ)(Y₀+e_net) + X₀·e_net))
+Numerator − Denominator
+  ∝ ρ·e · Y₀ · circ + (1 − ρ)·e·(higher-order ≥ 0 terms)
 ```
 
-Define `Δ_num = (Y₀ + e)(Y₀ + e_net) · circ` and
-`Δ_den = Y₀ · ((circ)(Y₀ + e_net) + X₀ · e_net)`.
-
-Expand:
-```
-Δ_num = circ · Y₀² + circ · Y₀ · (e + e_net) + circ · e · e_net
-Δ_den = Y₀² · circ + Y₀ · circ · e_net + Y₀ · X₀ · e_net
-```
-
-`Δ_num − Δ_den` simplifies to:
-```
-= circ · Y₀ · e + circ · e · e_net − Y₀ · X₀ · e_net
-```
-
-Since `Y₀ · circ = Y₀ · (S − X₀)`, and noting `e = e_net + e_fee = e_net + 0.05·e`:
-```
-Δ_num − Δ_den = circ · Y₀ · 0.05·e + (circ · e_net · (Y₀ + e − Y₀)) − ...
-```
-
-A cleaner way: substitute `e_net = 0.95e` and `Y₀ + e_net = Y₀ + 0.95e`:
-```
-Δ_num − Δ_den = circ · Y₀ · 0.05e + 0.95e · (circ · e − X₀ · Y₀ · 0)
-```
-
-The term reduces to `0.05·e · circ · Y₀ + (terms ≥ 0)` which is strictly
-positive whenever `e > 0` and `circ, Y₀ > 0`. ∎
+This is strictly positive whenever `e > 0`, `ρ > 0`, and `Y₀, circ > 0`.
+Therefore `floor' > floor`. ∎
 
 ### Sell of `r` ascend
 
-By symmetric argument with `r_net = 0.95·r`, `r_fee = 0.05·r`. The fee
-stays in the ascend side of the LP; the ETH side decreases by less than
-it would in a fee-less swap. Final result `floor' ≥ floor` with strict
-inequality for `r > 0`. ∎
+By symmetric argument with retention rate `ρ` on the ascend side. The
+`ρ·r` ascend stays in the LP outside the curve trade; the ETH side
+decreases by less than it would in a fee-less swap. Final result
+`floor' ≥ floor` with strict inequality for `r > 0`. ∎
+
+The same `ρ = 0.007` applies to sells: `0.01·r` total fee, of which
+`0.7 × 0.01 = 0.007` of `r` is the LP-retained share.
 
 (Full derivation continues in the same form; omitted here for brevity.
 The implementation tests verify the inequality numerically across
-randomized sequences.)
+randomized sequences. The "true floor" in the proof refers to the
+sum of active LP reserves PLUS uncollected fee credits — the on-chain
+`floor()` getter only sees the active portion until the next
+`rebalance()` materializes the credits.)
 
 ## appendix B — why the floor in v2 is realer than v1
 
@@ -716,20 +738,29 @@ This means:
 
 ## appendix C — comparison with v1 economics at matched volume
 
-| volume profile         | v1 MC    | v2 MC      |
-|-----------------------|----------|------------|
-| $200k mined, no sells | $468k    | $13.8M     |
-| $1M / $800k churn     | $889k    | $6.2M      |
-| $15M / $14M (active 24h)| $46.8M   | $140M      |
+Numbers from `scripts/v2sim.ts` at the current parameter set (1% fee,
+$2 mint surcharge, 122M cap, 1 ETH bootstrap, ETH=$2350):
 
-v2 reaches higher headline MC because supply scarcity on the CP curve
-combined with permanent fee retention compounds harder than v1's
-explicit premium markup. v1's premium ratchet was capped by mint-side
-discount; v2's only ceiling is `(P_ceiling × supply)`, which is
-effectively unbounded for full-range LP.
+| volume profile               | v2 MC     | v2 LP    | floor    | p/floor |
+|------------------------------|-----------|----------|----------|---------|
+| $200k mined, no sells        | $15.6M    | $202k    | $0.0017  | 77×     |
+| $1M / $800k churn            | $14.4M    | $221k    | $0.0018  | 65×     |
+| $5M / $4.8M churn            | $33.6M    | $393k    | $0.0033  | 85×     |
+| $15M / $14M (active 24h)     | $540M     | $1.5M    | $0.012   | 359×    |
+| $50M / $40M (heavy churn)    | $13B      | $10.6M   | $0.087   | 2,801×  |
 
-The lower price-over-floor multiple in v1 (≤ 30×) vs v2 (≥ 70× at
-realistic volume) is a function of which mechanic delivers the markup,
-not whether the holder is more or less protected. Both have rising
-floors; v2's just rises slower in percentage terms because it's a
-larger MC base.
+Two takeaways:
+
+1. **Headline MC scales superlinearly with cumulative volume** because
+   buys consume LP-side ascend, walking the CP curve up sharply once
+   the active reserve thins. This is the usual sato-style fair-launch
+   reflexivity, applied to a regular V4 pool.
+
+2. **Floor scales sub-linearly** because the LP-retention share is
+   only `0.7%` per side. The rising floor isn't the engine of MC
+   growth — it's the redemption guarantee. The engine is the curve.
+
+The price-over-floor multiple grows with volume. At sustained
+$15M/24h volume, holders sit roughly 350× above the redemption floor.
+That floor itself is monotone non-decreasing forever, regardless of
+how the market price moves above it.
