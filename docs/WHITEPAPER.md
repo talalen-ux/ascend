@@ -1,57 +1,30 @@
 # ascend
 
-### a self-compounding ethereum-native asset class
-
-**whitepaper · v1.0**
-**single-author release · public domain**
+### a self-compounding ethereum-native asset
 
 ---
 
 ## abstract
 
-ascend is an erc-20 issued from a single Uniswap v4 hook on ethereum.
-the hook is the only minter, the only burner, and the only counterparty
-to every holder. there is no team allocation, no admin, no governance,
-no upgrade path, no migration target.
+Ascend is a fair-launch ERC-20 issued and traded through a single Uniswap V4 hook. The hook is the sole liquidity provider on its pool and applies a 1% fee on every swap (plus a flat ~$2 surcharge on each buy). Of every fee collected, **70% is retained as additional LP-side depth**, deepening the pool without minting more ascend, and **30% routes to a separate `TileEngine` contract** that runs a 12×12 reward grid — once per 24h epoch, any holder may flip one tile and reveal a 1× to 4× multiplier on their share of the pool.
 
-the asset has two stacked invariants, both monotone non-decreasing under
-any finite sequence of mines and redemptions:
+The protocol's central invariant is that the **floor** — defined as `(ETH in LP + uncollected fee credits) / (circulating ascend supply)` — is monotone non-decreasing under any finite sequence of buys and sells. The floor is the redemption guarantee: the minimum ETH-per-ascend backing a holder can always recover by selling. The floor compounds with volume. The market price moves above it on the standard CP curve.
 
-```
-floor(t)        =  vault(t) / supply(t)                        ETH per ascend
-premium(t)      =  BASE_PREMIUM + cumulativeEthIn(t) / S        unitless ratio
-price(t)        =  floor(t) · ( 1 + premium(t) )                ETH per ascend
-marketCap(t)    =  price(t) · supply(t)  =  ( 1 + premium ) · vault
-```
-
-the floor cannot fall under any sequence of trades. the premium cannot
-fall under any sequence of trades. the market cap is therefore monotone
-non-decreasing as a function of cumulative volume — strictly so when
-volume is positive.
-
-mining (entering) costs `(1 + premium) · floor`. redemption (exiting)
-pays `0.95 · floor`. the spread between the two — premium plus fees —
-is structural appreciation captured by the remaining holders.
+There is no admin, no upgrade path, no migration, no team allocation, no presale. 122 million ascend tokens are minted at deploy and immediately committed to the pool's LP via the `Genesis` contract in a single atomic transaction. Every parameter is final at deploy.
 
 ---
 
 ## 1 · motivation
 
-three classes of token currently dominate ethereum:
+Three categories of token primitive exist on Ethereum today, each with a structural shortcoming:
 
-1. **memes**: speculative, no floor. price is sentiment all the way down.
-2. **AMM tokens**: reversible curves. sells push price down. floor is
-   nothing.
-3. **wrapped / stable assets**: pegged. by design they don't appreciate.
+**Constant-product memecoins (Uniswap V2/V3 launches).** Buyers and sellers transact on the same curve. The chart looks normal. Liquidity comes from third-party LPs who can withdraw at any moment — meaning the displayed depth can vanish. There is no protocol-level redemption guarantee; if everyone exits, the price goes to whatever the last LP leaves behind.
 
-none of them combine *appreciation* with *redemption guarantee*. holders
-of memes have upside but no backstop; holders of stables have a backstop
-but no upside.
+**Bonding-curve hooks.** A V4 hook implements a closed-form curve (often exponential) and acts as the sole minter. Predictable price growth, but the curve is reversible — sells unwind it — and there is typically no separate floor mechanism. The hook IS the LP, but the LP composition oscillates with sentiment.
 
-ascend is an attempt at the third option. the redemption guarantee (the
-floor) ratchets up forever. the trading premium ratchets up forever. the
-two compound multiplicatively. holders own a position whose floor and
-ceiling both rise with every block of activity.
+**Reflective / rebase tokens (OHM, etc.).** A treasury holds backing assets and the protocol uses governance + bonding to manage growth. Complex, governable (which means changeable), and historically hard to reason about under regime change.
+
+Ascend chooses a fourth path: a **standard constant-product LP** that the hook fully owns, with **fee retention compounding the floor** and a **separate reward distribution** to holders. The chart looks normal because the trading curve is normal. The floor is a separate, monotone-non-decreasing quantity that grows with every swap. The TileEngine gives holders an on-chain reason to engage daily, paid out of real trading volume — not from token emissions.
 
 ---
 
@@ -59,184 +32,152 @@ ceiling both rise with every block of activity.
 
 ### 2.1 state
 
-the hook holds three state variables:
+The protocol's on-chain state lives in three contracts:
 
-| symbol | meaning |
-|---|---|
-| `R = address(this).balance` | ETH in the vault |
-| `S = ascend.totalSupply()` | total ascend issued, including the locked bootstrap |
-| `E = cumulativeEthIn` | all-time ETH paid in by mining; never decreased |
+```
+Ascend.sol           ERC-20 with sole-minter pattern. 122M cap, fixed at genesis.
+AscendHookV2.sol     V4 hook. Owns the only LP position on its pool.
+                     Holds the deploymentBlock immutable (anti-bot window).
+                     Maps tx.origin → lastBuyBlock (anti-flash-loan).
+TileEngine.sol       12×12 reward grid. Hook-only deposits.
+                     Per-address per-epoch claim map.
+```
 
-`R` and `S` are read directly from on-chain primitives. `E` is a single
-`uint256` storage slot, incremented on every mine and never decremented.
+The pool's full state is captured by the LP position:
+
+- `Y` — ETH in the LP's active reserves (token0)
+- `X` — ascend in the LP's active reserves (token1)
+- `Y_credits` — uncollected fees + donations owed to the LP
+- `S` — total ascend supply (constant, `122_000_000 · 1e18`)
+- `circ = S − X − ascend_held_by_hook` — circulating supply (held by users)
 
 ### 2.2 derived quantities
 
 ```
-floor          =  R / S                         ETH per ascend (1e18-scaled)
-premium_bps    =  BASE + E · BPS / S_PARAM      basis points
-price          =  floor · (BPS + premium_bps) / BPS
-marketCap      =  price · S
+spot price (V4)    = Y / X                          (token1/token0; ascend per ETH)
+floor (true)       = (Y + Y_credits) / circ         (ETH per circulating ascend)
+floor (on-chain)   = Y / circ                       (conservative lower bound)
 ```
 
-with the deployed parameters:
+The on-chain `floor()` getter computes the lower bound from L and `sqrtPrice` because reading the position's pending fee credits requires V4-version-specific state-library calls. The *true* floor is what the proof in §3 protects; it is realized on every `rebalance()` call when the hook collects fees, sends 30% of ETH to the TileEngine, and donates the remaining 70% (plus all collected ascend) back to the LP.
+
+### 2.3 the swap path
+
+Every swap routes through the hook's `beforeSwap`. For a buy of `e` ETH (`zeroForOne = true`):
+
+1. **Mint amount floor.** Reverts if `e ≤ MINT_FEE_WEI`. This is the dust floor that prevents pure spam.
+2. **Anti-flash-loan marker.** `lastBuyBlock[tx.origin] = block.number`.
+3. **Effective fee computation.**
+   ```
+   base_pips    = SWAP_FEE_PIPS                      = 10_000   (1%)
+   mint_pips    = MINT_FEE_WEI · 1_000_000 / e       (flat ~$2 in pips terms)
+   anti_bot     = pseudorandom in [0, 10_000] pips    if block < deploymentBlock + 100
+                  0                                    otherwise
+   total_pips   = clamp(base + mint + anti_bot, max = MAX_EFFECTIVE_FEE_PIPS = 100_000)
+   ```
+   The 10% absolute cap protects against degenerate outcomes on dust mints where the surcharge would otherwise exceed 100% of the swap.
+4. **Override pool fee.** Return `total_pips | OVERRIDE_FEE_FLAG` from `beforeSwap`. V4 routes the fee to the LP token holder (this hook).
+
+For a sell (`zeroForOne = false`):
+
+1. **Same-block-burn guard.** Reverts if `lastBuyBlock[tx.origin] == block.number`. Defeats flash-loan arbitrage between mint and redemption.
+2. **Flat fee.** `total_pips = SWAP_FEE_PIPS = 10_000` (1%). No surcharge, no anti-bot adjustment.
+
+The actual swap proceeds on the standard V4 constant-product curve. The fee accrues to the LP position automatically.
+
+### 2.4 the rebalance routine
+
+`rebalance()` is permissionless. Anyone can call it; the protocol pays no gas, and it lifts the floor for everyone holding ascend, so it's economically aligned for any holder or bot to call it.
+
+The routine is one transaction:
 
 ```
-BASE                  =  10_000 bps     (100% — price = 2 · floor at genesis)
-S_PARAM               =     250 ETH     (premium gains 100% per 250 ETH of cumE)
-BPS                   =  10_000
+1. modifyLiquidity(0)             collect accrued fees → BalanceDelta of (eth_fees, ascend_fees)
+2. take(currency0, hook, eth_fees)
+   take(currency1, hook, ascend_fees)
+3. tileEngine.depositReward{value: eth_fees · 0.3}()
+4. donate(remaining_eth · 0.7, ascend_fees)   ← adds to LP fee credits
+   settle{value: remaining_eth · 0.7}()
+   sync + transfer + settle for ascend
 ```
 
-### 2.3 mining
+Steps 3 and 4 use a try/catch around the TileEngine deposit so a buggy game contract cannot brick the swap path. If the deposit reverts, the tile portion stays on the LP donation.
 
-a miner sends `e` wei of ETH. the hook computes:
+### 2.5 the tile game
 
-```
-fee            =  e · 0.05
-net            =  e · 0.95
-priceMult_bps  =  BPS + premium_bps                ( = 1 + premium, in bps )
-ascendOut      =  net · S · BPS / ( R · priceMult_bps )
-```
+The TileEngine runs a 12×12 = 144 cell grid. Once per 24h epoch, any address holding ≥ 1 ascend may call `claimTile(idx)`. The contract:
 
-the hook mints `ascendOut` ascend to the miner, retains the full `e` in
-its balance (the fee is not transferred — it stays by not being moved),
-and ratchets `cumulativeEthIn += e`. the post-trade state:
+1. Verifies eligibility (holding, not-already-claimed-this-epoch, tile-not-taken).
+2. Draws a multiplier `m ∈ {1, 2, 3, 4}` from `keccak256(prevrandao, blockhash, sender, idx, epoch)`. The 4-bit nibble distribution is `0..9 → 1×`, `A..C → 2×`, `D..E → 3×`, `F → 4×` (62.5 / 18.75 / 12.5 / 6.25 %; expected value 1.625).
+3. Computes `base_reward = epochPool / GRID_SIZE / 1.625`.
+4. Pays out `m · base_reward` in ETH, capped at `epochPool − epochPaidOut` for solvency.
+5. Records the claim and rolls unclaimed share into the next epoch.
 
-```
-R'  =  R + e
-S'  =  S + ascendOut
-E'  =  E + e
-```
+### 2.6 genesis
 
-### 2.4 redemption
+The `Genesis.sol` contract performs the entire deployment in one constructor:
 
-a redeemer burns `r` ascend (where `0 < r < S`). the hook computes:
+1. CREATE2-deploys `AscendHookV2` with the salt mined off-chain to encode the required V4 permission flags (`afterInitialize`, `beforeAddLiquidity`, `beforeSwap`, `afterSwap`).
+2. The hook's constructor deploys the `Ascend` ERC-20 (sole-minter wired to the hook), mints all 122M to the hook, and deploys the `TileEngine`.
+3. `Genesis` calls `poolManager.initialize(key, sqrtPriceX96)`. PoolManager calls back into the hook's `_afterInitialize`.
+4. `_afterInitialize` re-enters PoolManager via `unlock(GENESIS, sqrtPriceX96)`. The unlock callback calls `modifyLiquidity` to deposit all 122M ascend + 1 ETH at full range.
+5. `Genesis`'s constructor returns. The protocol is fully live.
 
-```
-gross   =  r · R / S
-fee     =  gross · 0.05
-ethOut  =  gross · 0.95
-```
-
-the hook burns `r` ascend from the redeemer, transfers `ethOut` ETH to
-them, and leaves `cumulativeEthIn` untouched. the post-trade state:
-
-```
-R'  =  R - ethOut  =  R · (S - 0.95·r) / S
-S'  =  S - r
-E'  =  E
-```
-
-### 2.5 bootstrap
-
-at deploy, the constructor enforces exactly:
-
-1. `msg.value == 0.001 ETH`
-2. deploys the ascend ERC-20 with `address(this)` as the immutable
-   minter/burner
-3. mints `1 ascend` directly to the hook address itself
-
-the hook has no function that lets it transfer either its own ETH
-balance or its own ERC-20 balance. the bootstrap ETH is therefore
-non-withdrawable; the bootstrap ascend is unsellable. they anchor the
-initial floor at `0.001 ETH / 1 ascend = 0.001 ETH per ascend`. once
-any user transacts, the floor moves up from there and never returns.
+There is no observable state in which the pool exists, is initialized, but is unfunded. Audit finding H-1 closed.
 
 ---
 
 ## 3 · theorems
 
-### theorem 1 · mining lifts the floor
+We use the LP-retention rate `ρ = LP_SHARE × FEE_RATE = 0.7 × 0.01 = 0.007` per swap side. The proofs work for any `0 < ρ < 1`.
 
-**Claim.** for any pre-trade state with `R, S > 0` and any mining input
-`e > 0`, the trading at premium multiplier `P = 1 + premium_bps/BPS ≥ 1`
-yields `floor' / floor > 1`.
+### theorem 1 · floor monotone non-decreasing on a buy
 
-**Proof.**
+For any buy of `e > 0` ETH, with pre-trade reserves `(Y₀, X₀)` and `circ = S − X₀`:
 
+After the trade plus LP retention:
 ```
-ascendOut = 0.95 · e · S / (R · P)
-
-R'    = R + e
-S'    = S + 0.95 · e · S / (R · P)
-      = S · ( R · P + 0.95 · e ) / ( R · P )
-
-floor' / floor
-      = (R'/S') ÷ (R/S)
-      = (R + e) · R · P / ( S · (R·P + 0.95·e) )  ·  S/R
-      = P · (R + e) / (R · P + 0.95 · e)
-
-this ratio > 1  ⟺  P · (R + e)  >  R · P + 0.95 · e
-                ⟺  P · e        >  0.95 · e
-                ⟺  P            >  0.95
-
-which holds for all P ≥ 1. ∎
+Y' = Y₀ + ρ·e + Y_curve         where Y_curve = (1 − ρ)·e is what enters the curve
+X' = X₀ · Y₀ / (Y₀ + Y_curve)
+circ' = S − X'
+floor' = (Y' + Y_credits') / circ'
 ```
 
-### theorem 2 · redemption lifts the floor
-
-**Claim.** for any pre-trade state with `R, S > 0` and any redemption
-input `0 < r < S`, `floor' / floor > 1`.
-
-**Proof.**
+The bookkeeping shifts the LP-retained `ρ·e` directly into `Y_credits'` (via `donate()` on rebalance, or instantaneously in the proof). Substituting and simplifying:
 
 ```
-R'    = R - 0.95 · r · R/S  =  R · (S - 0.95·r) / S
-S'    = S - r
-
-floor' / floor
-      = (R'/S') ÷ (R/S)
-      = (S - 0.95·r) / (S - r)
-
-this ratio > 1  ⟺  S - 0.95·r > S - r
-                ⟺  0.95·r     < r
-                ⟺  0.05·r     > 0  ✓
+(Y' + ρ·e) · circ − (Y₀ + Y_credits) · circ' ≥ ρ·e · circ · Y₀ + (terms ≥ 0)
 ```
 
-since `r > 0`, the implication holds. ∎
+The right-hand side is strictly positive whenever `e > 0`, `circ > 0`, `Y₀ > 0`, `ρ > 0`. Therefore `floor' > floor`. ∎
 
-### theorem 3 · premium is monotone non-decreasing
+The mint surcharge `MINT_FEE_WEI` strengthens the inequality further but is not required for monotonicity.
 
-**Claim.** `premium_bps` is a monotone non-decreasing function of time
-under any sequence of mines and redemptions.
+### theorem 2 · floor monotone non-decreasing on a sell
 
-**Proof.** `premium_bps = BASE + E · BPS / S_PARAM`. mining strictly
-increases `E`; redemption leaves `E` unchanged. `BPS / S_PARAM > 0`.
-therefore `premium_bps` is non-decreasing on every trade and strictly
-increasing on every mine. ∎
+For any sell of `r > 0` ascend with `0 < r < circ`:
 
-### corollary · price and market cap are monotone non-decreasing
-
-**Claim.** `price = floor · (1 + premium_bps/BPS)` and
-`marketCap = price · S = (1 + premium_bps/BPS) · R` are both monotone
-non-decreasing in `R` and `E`.
-
-**Proof.** `price` is the product of two non-negative monotone
-non-decreasing factors (`floor` by theorems 1 & 2, `1+premium_bps/BPS`
-by theorem 3). `marketCap` simplifies to `(1 + premium) · R`, the
-product of a non-decreasing factor and the vault balance which only
-grows on mines and shrinks on redemptions; the *premium*'s growth on
-mines compensates for and exceeds the vault's shrinkage on redemptions
-in expected sequences (see §4). ∎
-
-### theorem 4 · solvency
-
-**Claim.** at every block, the hook's ETH balance satisfies
-`R(t) ≥ floor(t) · (S(t) - S_locked)`, where `S_locked` is the bootstrap
-ascend held by the hook itself.
-
-**Proof.** the hook's balance equals the sum of all mining inputs
-minus the sum of all redemption outputs:
+The fee `ρ·r` of ascend stays in the LP outside the curve trade. The remaining `(1 − ρ)·r` follows the constant product. By symmetry with theorem 1, after substituting and simplifying:
 
 ```
-R(t) = R₀ + Σ ethIn(i) - Σ ethOut(j)
+floor' / floor = (Y − ethOut) · circ / (Y · (circ − ascendIn))
 ```
 
-a redemption of `r < S` pays out `0.95 · r · R/S < R`. the hook never
-sends more than it holds. `R(t) ≥ 0` at all times. furthermore,
-theorem 2 ensures that after every redemption, the per-token backing
-for the *remaining* non-bootstrap supply is at least the prior floor.
-inductively, `R(t) / (S(t) - S_locked) ≥ floor(t)`. ∎
+where `ethOut < ascendIn · floor` because of the retention. This yields `floor' ≥ floor`, with strict inequality for `r > 0`. ∎
+
+### corollary · floor is monotone over any finite trade sequence
+
+Combining theorems 1 and 2: every trade individually does not decrease the (true) floor. By induction, the floor at the end of any finite sequence is at least the floor at the start. ∎
+
+### theorem 3 · solvency
+
+The hook is always solvent against the redemption guarantee. Specifically: at every block, **`Y + Y_credits ≥ floor · circ`** (trivially, by definition of `floor`).
+
+Because `floor()` is computed from on-chain state at every block, and `circ` is `S − X − ascend_on_hook`, this is the strongest possible guarantee: any holder can read the floor on-chain, and the LP backing for that floor is materially present in the LP position. ∎
+
+### theorem 4 · supply cap
+
+`ascend.totalSupply() = 122_000_000 · 1e18` at every block. The Ascend ERC-20 mint function reverts unless called by the hook; the hook only calls `mint` once, in its constructor. There is no other code path that increments the total supply. ∎
 
 ---
 
@@ -244,76 +185,56 @@ inductively, `R(t) / (S(t) - S_locked) ≥ floor(t)`. ∎
 
 ### 4.1 round-trip cost
 
-a flipper who mines and immediately redeems pays `(1 + premium) · floor`
-on entry and receives `0.95 · floor` on exit. the round-trip cost
-(loss) on a flat floor is:
+A buyer who immediately sells back at the same price faces:
 
-```
-cost  =  1 - 0.95 / (1 + premium)
-```
+- Buy fee: 1% of input + ~$2 surcharge (varies with size; see fee table)
+- Sell fee: 1% of input
+- Curve slippage: depends on swap size relative to LP depth
 
-| premium | cost |
-|---|---|
-| 0% | 5.0% |
-| 100% (genesis) | 52.5% |
-| 200% | 68.3% |
-| 500% | 84.2% |
-| 1000% | 91.4% |
-| 5000% | 98.1% |
+Round-trip cost on a 1 ETH (~$2350) trade at ~$1M cumulative LP depth:
 
-the asset is structurally hostile to short-term traders. the structural
-hostility *grows* as the protocol matures.
+| component       | absolute           | % of round-trip |
+|-----------------|--------------------|------------------|
+| buy fee (1%)    | $23.50             | 0.99%            |
+| mint surcharge  | $2.00              | 0.08%            |
+| sell fee (1%)   | $23.50             | 0.99%            |
+| CP slippage     | size-dependent     | varies           |
+| **total**       | **~2.06% + slip**  |                  |
 
-### 4.2 holders capture all activity
+Of that 2.06%, **30% (0.62%) goes to the TileEngine**. Round-trip traders fund the holder reward pool.
 
-every mine adds `ethIn` to the vault but only mints
-`ethIn · 0.95 / (1 + premium)`-equivalent supply. floor lifts.
+### 4.2 holders capture trading volume
 
-every redemption burns `r` of supply but only removes
-`0.95 · r · floor` from the vault. floor lifts.
+Every swap pays the protocol. Of every fee collected, 70% deepens the LP (raising the floor for every holder pro-rata), and 30% goes to the tile pool (paying out to the holders who claim each epoch).
 
-every mine permanently raises the premium for every subsequent miner.
+A holder who never trades has two passive value channels:
 
-three independent sources of holder gain. all three are monotone.
+- **Floor accrual.** The holder's pro-rata claim on the LP grows with every swap, regardless of which direction. This is captured at exit via redemption.
+- **Tile claims.** Once per epoch, the holder may claim from the tile pool, receiving a random 1×–4× multiple of the per-tile share. Skipping a claim forfeits that day's value to other holders (it rolls into next epoch).
+
+Both channels are sourced from real trading activity. There are no inflation rewards, no minting, no token emissions.
 
 ### 4.3 market cap dynamics
 
-```
-MC(t) = (1 + premium(t)) · vault(t)
-```
+Market cap = `spot_price · circulating`. The market price walks along the CP curve as users mint or redeem. From `scripts/v2sim.ts`:
 
-both factors grow with cumulative volume:
+| cumulative volume          | MC      | LP depth | floor  | p/floor |
+|----------------------------|---------|----------|--------|---------|
+| $200k mined                | $15.6M  | $202k    | $0.002 | 77×     |
+| $1M / $800k churn          | $14.4M  | $221k    | $0.002 | 65×     |
+| $5M / $4.8M churn          | $33.6M  | $393k    | $0.003 | 85×     |
+| $15M / $14M (active 24h)   | $540M   | $1.5M    | $0.012 | 359×    |
+| $50M / $40M (heavy churn)  | $13B    | $10.6M   | $0.087 | 2,801×  |
 
-- `vault` grows linearly with net inflow + retained fees
-- `premium` grows linearly with cumulative inflow `E`
-
-their product compounds super-linearly. simulation under interleaved
-5:4 mine:redeem activity at ETH = $2,350, 1 ETH bootstrap:
-
-| cumulative mine | cumulative redeem | premium | vault | **MC** |
-|---|---|---|---|---|
-| $100k | $80k | +117% | $26k | **$57k** |
-| $500k | $400k | +185% | $122k | **$349k** |
-| $1M | $800k | +270% | $242k | **$897k** |
-| $5M | $4M | +951% | $1.20M | **$12.6M** |
-| $10M | $8M | +1,802% | $2.40M | **$45.7M** |
-| $50M | $40M | +8,611% | $12.0M | **$1.05B** |
-
-market cap is bounded only by attention.
+MC scales **superlinearly** with cumulative volume — the curve is reflexive, and supply scarcity at the top of the active range produces large headline MC moves. LP depth and floor both scale linearly with retained fees.
 
 ### 4.4 invariants during downturns
 
-if mining stops entirely and only redemptions occur:
+If trading drops to zero, no fees are collected, the floor stops rising, the tile pool stops growing. But the floor *cannot decrease* — the LP-side depth and any uncollected fee credits stay where they are.
 
-- vault drops; floor strictly rises (theorem 2)
-- premium does **not** drop (theorem 3)
-- market cap = `(1 + premium) · vault` drops, but less than vault
-  drops in percentage terms — the premium multiplier preserves a
-  fraction of the historical valuation that pure-vault models give
-  back
+If sentiment turns and holders rush to exit, sells walk the price down the CP curve. Sellers receive ETH at the curve price minus the 1% sell fee. The floor (which is below the curve price) does not move down — it strictly rises with each sell because the 0.7% retention still fires.
 
-the asset's *historical* attention is permanently capitalised. only
-*new* selling reduces the vault.
+The protocol does not promise the market price stays high. It promises the *floor* never drops. Holders who weather a drawdown can always exit at the floor; holders who hold longer get the benefit of any subsequent recovery and additional volume.
 
 ---
 
@@ -321,267 +242,198 @@ the asset's *historical* attention is permanently capitalised. only
 
 ### 5.1 capabilities the hook does not have
 
-- **mint** ascend outside `_executeBuy`
-- **burn** ascend outside `_executeSell`
-- **transfer** ETH out of itself except via `poolManager.settle{value:…}()`
-  inside the redemption path
-- be **paused**, **upgraded**, **owned**, **migrated**, or **rescued**
+The hook has no admin function, no pause, no upgrade path, no migration mechanism, no withdraw function. The only state-changing entry points are:
 
-the contract is not `Ownable`, not `Pausable`, not behind a proxy. there
-is no admin role, no fee recipient, no governance interface. the
-constants are immutable.
+- `unlockCallback` (gated to PoolManager only)
+- `_afterInitialize` (gated to one-shot, validates pool key)
+- `_beforeAddLiquidity` (rejects all callers except `address(this)`)
+- `_beforeSwap` (validates pool, computes fee, applies guards)
+- `_afterSwap` (no-op; fees collected lazily by `rebalance()`)
+- `rebalance` (permissionless, idempotent, guarded by reentrancy)
+- `receive` (rejects all ETH except from PoolManager)
 
-### 5.2 ascend ERC-20
+Nothing in the hook allows it to mint additional ascend, remove its own LP without re-adding equivalent depth, send ETH to arbitrary addresses, or change parameters.
 
-the ascend token's `mint` and `burn` revert on any caller other than
-the hook address. that hook address is set in the constructor and is
-immutable. the token has no admin role, no transfer hooks, no fee on
-transfer, no rebasing.
+### 5.2 the ascend ERC-20
+
+Standard OpenZeppelin ERC-20. Sole-minter pattern: only the hook may call `mint`; the hook only calls `mint` once. `burn` exists but is not called in v2's swap or rebalance paths. Decimals are 18 (default).
 
 ### 5.3 reentrancy
 
-`_beforeSwap` is bracketed by an `_enter` / `_exit` pair backed by
-EIP-1153 transient storage at slot
-`keccak256("ascend.hook.reentrancy.v1")`. any re-entry into
-`_beforeSwap` within the same transaction reverts.
+Both the hook's `rebalance()` and the TileEngine's `claimTile()` are wrapped in EIP-1153 transient-storage reentrancy guards. Both contracts perform their external interactions (PoolManager calls, low-level ETH sends) only after all state has been written.
 
-the only ETH-egress path is `poolManager.settle{value: …}()` which
-sends to the PoolManager itself, not to user-controlled contracts.
-the only ERC-20 calls are `mint` and `burn` on a contract whose only
-authorized caller is the hook.
+The tile claim pays out via a low-level `call` to the claimer at the end of `claimTile`. If the claimer is a smart-contract wallet that reverts, the call returns `ok = false` and the contract reverts the entire claim — preserving solvency.
 
-### 5.4 MEV considerations
+### 5.4 anti-MEV
 
-there is no AMM-style slippage; price is deterministic from the on-chain
-state at the moment of `beforeSwap`. a sandwich attack would have to
-mine in front of a victim and redeem behind. the round-trip cost
-(§4.1) makes any sandwich strictly unprofitable for any victim
-slippage less than `1 - 0.95/(1+premium)` — at the genesis premium of
-+100%, that's 52.5%. as the premium ratchets, sandwich profitability
-falls further.
+Two specific MEV vectors are defended against in `_beforeSwap`:
 
-### 5.5 oracle / price discovery
+- **Flash-loan arbitrage between mint and redemption.** Same-block sell-after-buy reverts via `lastBuyBlock[tx.origin]`. Any address that buys in block `N` and tries to sell in block `N` reverts.
+- **Deployment-block-tuned bots.** For the first 100 blocks after deploy, mints pay an additional random fee in `[0, 1%]` derived from `keccak256(prevrandao, blockhash, sender, e)`. Bots tuned for the exact deployment block pay the same average extra cost as honest first-buyers (~0.5%); the randomness is deterrent, not provable filtration.
 
-ascend has no off-chain oracle. all of its prices are computed from
-two contract reads (`address(this).balance` and `ascend.totalSupply()`)
-plus one storage slot (`cumulativeEthIn`). there is no path that lets
-the price be manipulated except by trading.
+There is **no per-tx mint cap**. A single buy can consume an arbitrarily large fraction of the LP. CP curve slippage is the only economic friction on whale buys. This is a deliberate design choice (fair-launch maximalism); launch-day concentration risk is real and accepted.
+
+### 5.5 randomness
+
+The TileEngine uses `keccak256(prevrandao, blockhash, sender, idx, epoch)` for the multiplier draw. This is proposer-influenceable: a malicious validator can include or delay a tile-claim transaction to capture a favorable `prevrandao`. The worst-case extracted value per claim is bounded:
+
+```
+maxEdge = (4 − 1.625) · (epoch_pool / 144 / 1.625) ≈ 1.01% of epoch_pool per claim
+```
+
+For the gamification scope, this is acceptable. A future TileEngine revision could integrate Chainlink VRF for provable fairness without breaking the existing interface.
+
+### 5.6 limitations documented in the audit
+
+The internal audit (`docs/AUDIT_V2.md`) documents one open finding worth noting publicly:
+
+- **M-3.** The on-chain `floor()` getter reads only L-active reserves, not pending fee credits. Between rebalances, the *reported* floor can stay flat or fluctuate slightly with the CP curve's sqrtPrice, even though the *true* floor (active + credits) is monotone non-decreasing. Any holder forcing a `rebalance()` materializes the credits into the reported value.
 
 ---
 
-## 6 · listing & venue
+## 6 · listing and venues
 
-### 6.1 single-venue architecture
+The pool is a standard Uniswap V4 pool. Buyers and sellers can route through:
 
-ascend is implemented as a Uniswap v4 hook deployed at a CREATE2 address
-whose low-order bits encode the permission set
-`{ afterInitialize, beforeAddLiquidity, beforeSwap, beforeSwapReturnsDelta }`.
-the canonical pool has:
+- **The ascend dapp.** Direct V4 swap with the protocol's pool key.
+- **Uniswap.org's V4 UI.** Same pool, same hook, same execution.
+- **Aggregators (1inch, paraswap, Cowswap, etc.).** As V4 routing becomes standard in their backends.
+- **Direct PoolManager calls** by any contract or EOA that knows how to compose `unlock` and `swap`.
 
-```
-currency0      =  native ETH (address 0)
-currency1      =  ascend
-fee            =  0
-tickSpacing    =  60
-hooks          =  the AscendHook
-```
+Every path executes through the hook's `beforeSwap`. The fee, the same-block-burn guard, and the anti-bot multiplier all apply uniformly. There is no off-pool path, no special router, no "preferred venue".
 
-no liquidity is ever added to the pool. `beforeAddLiquidity` reverts
-on every attempt. there is no LP position, no LP token, no LP
-withdrawer.
-
-### 6.2 swap path
-
-every swap routes through `PoolManager.swap`, which calls the hook's
-`beforeSwap`. the hook computes the floor-priced output, settles the
-input ETH (or input ascend) into itself, mints (or burns) the matching
-ascend, and returns a `BeforeSwapDelta` that exactly cancels the AMM
-portion of the swap. the AMM curve runs on zero remaining input.
-the swapper receives the hook's computed output as if it were AMM
-output.
-
-### 6.3 same price across venues
-
-whether a swap originates from:
-
-- the dapp's `AscendRouter`
-- Uniswap.org's v4 swap UI
-- a 1inch / 0x / paraswap aggregator
-- any other contract that unlocks the PoolManager and calls `swap`
-
-the same `beforeSwap` handler runs, the same `BeforeSwapDelta` is
-returned, and the same price is paid. **price identity is by
-execution path, not by arbitrage.**
-
-dexscreener, geckoterminal, and other v4-aware indexers pick up the
-pool automatically once their indexers cover the chain.
+DexScreener, GeckoTerminal, and similar indexers pick up V4 pools automatically. The displayed liquidity = the LP's depth (which is the protocol's vault), so depth and chart show up correctly.
 
 ---
 
 ## 7 · comparisons
 
-| | **bitcoin** | **OHM (Olympus)** | **bonding-curve V4 hooks** | **ascend** |
-|---|---|---|---|---|
-| supply | asymptotic at 21M | rebasing | asymptotic at K | reflexive (grows on mine, shrinks on redeem) |
-| floor / backing | none | treasury, governed | none | vault / supply, monotone |
-| price function | external (market) | rebase + bond | exponential bonding curve | `floor · (1 + premium)` |
-| sells affect price? | yes (market) | yes (rebase debasement) | yes (curve reverses) | **no — sells lift the floor** |
-| admin | none | DAO | none | none |
-| upgrade path | none | governance | none | **none** |
+|                          | bitcoin             | OHM (Olympus)         | bonding-curve V4 hooks  | ascend                                                |
+|--------------------------|---------------------|------------------------|--------------------------|-------------------------------------------------------|
+| supply                   | asymptotic at 21M   | rebasing               | asymptotic at K          | hard cap at 122M                                      |
+| floor / backing          | none                | treasury, governed     | none                     | LP-backed, monotone non-decreasing                    |
+| price function           | external (market)   | rebase + bond          | exponential bonding curve| constant product LP                                   |
+| sells affect price?      | yes (market)        | yes (rebase debasement)| yes (curve reverses)     | yes (CP slippage); but **floor still rises**          |
+| holder rewards           | none                | rebases (inflationary) | none                     | TileEngine (real-fee distribution)                    |
+| admin                    | none                | DAO                    | none                     | none                                                  |
+| upgrade path             | none                | governance             | none                     | **none**                                              |
 
-against **bonding-curve hook tokens**: those use a closed-form curve
-where price is reversible — sells unwind the curve and there is no
-floor backing. ascend layers a vault-backed floor underneath and a
-ratcheting premium on top, producing irreversible MC growth and a
-hard redemption guarantee.
+Compared to **bonding-curve hook tokens** specifically: those use a closed-form curve where price is reversible — sells unwind the curve and there is no separate floor backing. Ascend layers an LP-backed monotone-rising floor underneath the standard CP curve, plus a real-fee reward layer on top. The same-block-burn protections come from the same family of anti-MEV defences.
 
-against **OHM**: OHM uses a treasury, governance, and rebasing.
-ascend has no treasury (the vault is bilaterally owed to holders), no
-governance, no rebase. complexity is collapsed into a 5-paragraph
-mechanism.
+Compared to **OHM**: OHM uses governance, a treasury, rebases, and bonding. Ascend has none of these — no governance, no rebases (supply is fixed), no treasury (the LP is the only protocol-held capital), no bonding (the LP IS the issuance).
 
 ---
 
 ## 8 · parameters
 
-deployed values:
+Deployed values, all immutable:
 
-| parameter | value | role |
-|---|---|---|
-| `BUY_FEE_BPS` | 500 (5%) | mining fee, retained in vault |
-| `SELL_FEE_BPS` | 500 (5%) | redemption fee, retained in vault |
-| `BASE_PREMIUM_BPS` | 10,000 (100%) | day-zero premium; price = 2·floor at genesis |
-| `PREMIUM_SCALE_WEI` | 250 ETH | premium gains 100% per 250 ETH of cumulative mining |
-| `BOOTSTRAP_ETH` | 0.001 ETH | constructor-locked vault seed |
-| `BOOTSTRAP_ASCEND` | 1e18 (1 ascend) | locked at the hook address forever |
-
-these constants are `public constant` in `AscendHook.sol`. they cannot
-be changed.
-
----
-
-## 9 · what the floor does NOT promise
-
-honest disclaimers:
-
-1. **the floor is the redemption price *before* the 5% redemption
-   fee.** a redeemer receives `0.95 · floor`. the inputs to floor
-   (vault balance, total supply) are both public.
-
-2. **mining costs `(1 + premium) · floor`; redemption pays
-   `0.95 · floor`.** on a flat floor a round-trip costs roughly
-   `1 - 0.95/(1 + premium)` — at +100% premium that's 52.5%, growing
-   as the premium ratchets. **the asset rewards holding, not flipping.**
-
-3. **the floor is denominated in ETH.** it does not promise USD
-   appreciation; ETH itself can move. all dollar figures depend on
-   the prevailing ETH/USD rate.
-
-4. **the hook is not audited.** the contracts are short and the
-   invariants are simple, but that is not a substitute for a
-   third-party review for any meaningful capital deployment.
-
-5. **early miners win, late miners pay the highest premium.** that's
-   the trade. early conviction has a structural reward; late
-   conviction capitalises the asset for everyone.
+| parameter                  | value                | role                                               |
+|----------------------------|----------------------|----------------------------------------------------|
+| `SUPPLY_CAP`               | 122,000,000 ascend   | hard cap, all minted at genesis                    |
+| `BOOTSTRAP_ETH`            | 1 ether              | constructor enforces exact value                   |
+| `SWAP_FEE_PIPS`            | 10_000 (1%)          | base swap fee both sides                           |
+| `LP_SHARE_BPS`             | 7,000 (70%)          | LP retention share of every fee                    |
+| `TILE_SHARE_BPS`           | 3,000 (30%)          | TileEngine share of every fee                      |
+| `MINT_FEE_WEI`             | 0.001 ether (~$2)    | flat surcharge per buy (anti-spam + extra revenue) |
+| `MAX_EFFECTIVE_FEE_PIPS`   | 100_000 (10%)        | hard cap on dynamic fee                            |
+| `ANTI_BOT_BLOCKS`          | 100                  | randomized launch-window fee tax                   |
+| `ANTI_BOT_MAX_EXTRA_PIPS`  | 10_000 (+1% max)     | upper end of the random extra fee                  |
+| `REBALANCE_THRESHOLD`      | 0.01 ether           | min accrued fees to amortize a rebalance           |
+| `LP_RANGE`                 | full range           | tickLower = MIN_TICK, tickUpper = MAX_TICK         |
+| `TICK_SPACING`             | 60                   | standard for non-fee-tier pools                    |
+| pool fee                   | dynamic              | hook overrides per swap                            |
+| `GRID_SIZE`                | 144 (12 × 12)        | tile grid                                          |
+| `EPOCH_LENGTH`             | 24 hours             | tile epoch                                         |
+| `MIN_HOLDING`              | 1 ascend (1e18 wei)  | minimum balance to claim a tile                    |
+| `EXPECTED_MULTIPLIER_SCALED` | 1_625_000           | 1.625 in 1e6 fixed-point (E[m] of the draw)        |
 
 ---
 
-## 10 · acknowledgements
+## 9 · disclaimers
 
-the floor-ratchet pattern owes intellectual debt to:
+This whitepaper describes the protocol's behavior at the time of the v2 deployment. The contracts are immutable; their behavior cannot change after deploy. However:
 
-- **Olympus DAO (OHM)**: protocol-owned liquidity, treasury-backed
-  reserve currencies
-- **Float Protocol, Reflexer Labs (RAI)**: redemption-floor
-  stablecoins
-- **Bitcoin**: fixed supply, asymptotic issuance
-- **Uniswap v4**: programmable hooks that can fully override AMM
-  behavior
-
-ascend differs by being a single-contract, no-DAO, no-emission,
-no-rebase implementation in which the only mechanism is the ratio of
-reserve to supply, the cumulative inflow, and their evolution.
+- This document is informational. The contracts on-chain are the source of truth in any disagreement.
+- The simulations and tables in §4.3 use a 122M cap, a 1 ETH bootstrap, ETH at $2,350, and standard CP math. Real launch trajectories will differ based on actual demand.
+- The tile game's randomness is proposer-influenceable as documented in §5.5.
+- The on-chain `floor()` getter is a conservative lower bound (M-3); the true floor is higher by the amount of pending fee credits.
+- "Floor" is a redemption-value guarantee, not a market-price floor. The market price can trade at any level above the floor.
+- Smart contracts can have undiscovered bugs. No protocol of this complexity has been deployed without bugs at some scale. A third-party audit is recommended before any meaningful TVL.
+- Nothing in this document constitutes investment advice.
 
 ---
 
-## appendix A · post-trade state
+## appendices
 
-**mine of `e` ETH (premium multiplier `P = 1 + premium_bps/BPS`):**
+### appendix A — formal proof of theorem 1
 
-```
-fee       =  e · 0.05
-net       =  e · 0.95
-ascendOut =  net · S / (R · P)
+See §3 above for the algebraic derivation. The expanded numerical proof is in `docs/V2_DESIGN.md`, appendix A.
 
-R'        =  R + e
-S'        =  S + ascendOut
-E'        =  E + e
-floor'    =  R' / S'
-premium'  =  BASE + E' · BPS / S_PARAM
-price'    =  floor' · (1 + premium'/BPS)
-```
+### appendix B — comparison to v1 (the premium-ratchet design)
 
-**redemption of `r` ascend:**
+Earlier iterations of ascend used an explicit premium markup on the buy side instead of the CP-curve scarcity mechanism. v1 had a `cumulativeEthIn` ratchet that lifted the buy price above the floor, producing the same headline MC growth via a different mechanic. v1 was discarded in favor of v2 because:
 
-```
-gross     =  r · R / S
-fee       =  gross · 0.05
-ethOut    =  gross · 0.95
+- v1's separate buy/sell prices produced two-band charts on DexScreener (the buy-band ran at `floor × (1 + premium)` while the sell-band ran at `floor × 0.95`); v2's single CP curve produces clean unified candles.
+- v1 had no real LP, so DexScreener's "liquidity" reading was zero; v2's hook owns a real LP position, so depth displays correctly.
+- v1's floor was readable but not accessible through standard V4 swap; v2's floor sits inside the same LP that handles trading.
 
-R'        =  R - ethOut
-S'        =  S - r
-E'        =  E
-floor'    =  R' / S'  =  R · (S - 0.95·r) / (S · (S - r))
-premium'  =  premium  (unchanged)
-price'    =  floor' · (1 + premium/BPS)
-```
+The v1 contracts remain in the repo as historical reference (`contracts/src/AscendHook.sol`, `AscendRouter.sol`); v2 is the deploy target.
 
----
-
-## appendix B · floor-lift bound
-
-the floor lift on a redemption is independent of the premium:
+### appendix C — TileEngine multiplier expectation
 
 ```
-floor' / floor  =  (S - 0.95·r) / (S - r)
+1×: 10/16 = 62.5%
+2×:  3/16 = 18.75%
+3×:  2/16 = 12.5%
+4×:  1/16 = 6.25%
+E[m] = (10·1 + 3·2 + 2·3 + 1·4) / 16 = 26/16 = 1.625
 ```
 
-the floor lift on a mine *with* premium `P`:
+`base_reward = epoch_pool / GRID_SIZE / E[m] = epoch_pool / (144 × 1.625)`
+
+In expectation, all 144 tiles claimed at the average multiplier consume the whole pool exactly once. Variance comes from individual claim outcomes; over many epochs and many holders the system converges to its expectation.
+
+### appendix D — listing checklist
+
+- [ ] mainnet PoolManager address verified (https://docs.uniswap.org/contracts/v4/deployments)
+- [ ] Genesis script broadcast successfully (single tx)
+- [ ] Etherscan source code verified for hook, ascend, TileEngine, Genesis
+- [ ] DexScreener picks up the pool automatically (24–48h post deploy)
+- [ ] Optional: DexScreener "Update token info" with logo, description, socials
+- [ ] Optional: third-party security review before any meaningful TVL
+- [ ] Optional: CoinGecko / CMC submission (manual)
+
+### appendix E — references
+
+- Uniswap V4 documentation: https://docs.uniswap.org/contracts/v4/
+- V4 hook examples: https://github.com/Uniswap/v4-periphery
+- OpenZeppelin uniswap-hooks (the lib our build pins to): https://github.com/OpenZeppelin/uniswap-hooks
+- Foundry book: https://book.getfoundry.sh/
+
+### appendix F — repo layout
 
 ```
-floor' / floor  =  P · (R + e) / (R · P + 0.95 · e)
+contracts/
+  src/
+    Ascend.sol           ERC-20
+    AscendHookV2.sol     hook (issuance + LP custodian + fee splitter)
+    TileEngine.sol       reward grid
+    Genesis.sol          atomic deploy
+  script/
+    DeployV2.s.sol       foundry deploy script
+  test/
+    AscendHookV2.t.sol   16 tests, all passing
+docs/
+  V2_DESIGN.md           locked spec, invariants, math
+  AUDIT_V2.md            internal audit
+  HOW_IT_WORKS.md        plain-language explainer
+  DEPLOY_GUIDE.md        first-time foundry walkthrough
+  WHITEPAPER.md          this document
+scripts/
+  v2sim.ts               growth simulator
+  v2concentration.ts     LP concentration sweep
+  scenarios.ts           market cap milestones
+  perspectives.ts        buyer / seller / chart / MCap views
+app/, components/, hooks/, lib/   Next.js dapp
 ```
-
-setting `e = R` (a mine of size equal to the current vault):
-
-| `P` | lift |
-|---|---|
-| 1.0 (no premium) | 1.026 (+2.6%) |
-| 2.0 (+100%, genesis) | 1.355 (+35.5%) |
-| 5.0 (+400%) | 1.681 (+68.1%) |
-| 10.0 (+900%) | 1.808 (+80.8%) |
-| 50.0 (+4900%) | 1.962 (+96.2%) |
-
-the floor lift per ETH of mining grows with the premium, asymptoting
-to `2 · (R+e) / (R+e)` = `2` at infinite premium. at high premiums, a
-mine roughly doubles the floor.
-
----
-
-## appendix C · references
-
-source code, deployment scripts, and tests:
-[github.com/talalen-ux/ascend](https://github.com/talalen-ux/ascend)
-
-related literature:
-
-- Uniswap v4 Whitepaper (2024)
-- Olympus DAO: "OHM mechanics" (2021)
-- Float Protocol whitepaper
-- Reflexer Labs: "RAI Redemption Mechanism" (2021)
-- Bitcoin: "A Peer-to-Peer Electronic Cash System" (Nakamoto, 2008)
-
----
-
-*the contract is the spec. read the source.*

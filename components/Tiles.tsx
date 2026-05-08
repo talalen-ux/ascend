@@ -143,7 +143,7 @@ export function Tiles() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {state.configured
-          ? "every swap on the ascend pool funds this pool with 1% of the trade fee. once per 24h epoch, any holder can flip one tile and reveal a random 1× to 4× multiplier on their share. unclaimed tiles roll forward into next epoch."
+          ? "every swap on the ascend pool funds this pool with 30% of the trade fee (≈ 0.3% of volume). once per 24h epoch, any holder can flip one tile and reveal a random 1× to 4× multiplier on their share. payouts are in ETH. unclaimed tiles roll forward into next epoch."
           : "the tile game runs on a separate contract that's funded by every ascend swap. live once the v2 hook is deployed; for now, this shows the layout and the empty state."}
       </p>
 

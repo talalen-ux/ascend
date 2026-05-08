@@ -62,7 +62,9 @@ grid of 144 tiles. Once every 24 hours, **anyone holding at least 1
 ascend** can click one tile and flip it.
 
 When you flip a tile, it reveals a random multiplier between 1× and
-4×, and you get paid in ascend tokens based on that multiplier.
+4×, and you get paid **in ETH** based on that multiplier. (The pool
+is filled with ETH from the 30% fee share, so claims pay ETH back to
+the holder's wallet directly.)
 
 The exact odds:
 - **62.5%** chance of 1× (smallest payout)
@@ -137,14 +139,13 @@ It's 9am and the daily epoch just rolled over. You hold some ascend.
 1. You open the dapp and see the 12×12 grid. All 144 tiles are
    "available" (dimmed but clickable).
 2. The header tells you the current pool size — say $5,000 worth of
-   ascend is in the TileEngine right now.
+   ETH is in the TileEngine right now.
 3. You click any tile. Your wallet pops up to confirm the
    transaction.
 4. After ~30 seconds, the tile flips. A modal appears: "**You won
-   3×!** You receive 47.2 ascend (~$165)."
-5. The ascend lands in your wallet immediately. You can hold it (now
-   you own more!) or sell it (1% fee, raises the floor for the next
-   holder).
+   3×!** You receive ~0.026 ETH (~$64)."
+5. The ETH lands in your wallet immediately. You can hold it,
+   stack more ETH, or buy more ascend with it.
 6. Throughout the day, other holders flip their tiles. By late
    evening, most tiles are taken. Whatever pool wasn't claimed rolls
    into tomorrow's epoch.
