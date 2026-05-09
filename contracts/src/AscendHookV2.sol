@@ -25,10 +25,10 @@ import {TileEngine} from "./TileEngine.sol";
 /// @notice The hook owns a full-range V4 LP that holds the entire ascend
 ///         supply paired against the protocol's ETH vault. Buyers and
 ///         sellers trade the same constant-product curve; on every swap
-///         the hook collects a 5% fee and splits it:
+///         the hook collects a 1% fee and splits it 70/30:
 ///
-///           4% retained as ETH-side LP depth (compounds the floor)
-///           1% pushed to TileEngine.depositReward() as the reward pool
+///           0.7% retained as ETH-side LP depth (compounds the floor)
+///           0.3% pushed to TileEngine.depositReward() as the reward pool
 ///                for the 12×12 tile-flipping game
 ///
 ///         The LP's lower tick (= the floor) is monotone non-decreasing
@@ -431,11 +431,12 @@ contract AscendHookV2 is BaseHook {
     // afterSwap — analytics only; fees are collected by rebalance()
     // -----------------------------------------------------------------
     //
-    // The 5% dynamic fee set in beforeSwap is taken by PoolManager from
-    // the swap input and credited to the LP token holders. Since this
-    // hook is the sole LP, every wei of fee accrues to our position's
-    // claimable balance. The actual collection + split happens in
-    // rebalance() — we don't pay the gas in afterSwap.
+    // The dynamic fee set in beforeSwap (1% base + surcharges, capped at
+    // MAX_EFFECTIVE_FEE_PIPS) is taken by PoolManager from the swap input
+    // and credited to the LP token holders. Since this hook is the sole
+    // LP, every wei of fee accrues to our position's claimable balance.
+    // The actual collection + split happens in rebalance() — we don't
+    // pay the gas in afterSwap.
     //
     // Anyone can call rebalance() when accumulated fees ≥
     // REBALANCE_THRESHOLD; bots and holders are economically motivated
@@ -547,8 +548,8 @@ contract AscendHookV2 is BaseHook {
             poolManager.take(poolKey.currency1, address(this), ascendFees);
         }
 
-        // Split the ETH portion: 4% LP retention, 1% to TileEngine.
-        // 30% to TileEngine, 70% retained as LP depth (compounds floor).
+        // Split the ETH portion: 30% to TileEngine, 70% retained as LP
+        // depth (compounds the floor).
         uint256 tilePortion = (ethFees * TILE_SHARE_BPS) / SHARE_DENOM;
         uint256 lpEthPortion = ethFees - tilePortion;
 

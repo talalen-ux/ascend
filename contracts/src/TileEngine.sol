@@ -329,16 +329,12 @@ contract TileEngine {
     function currentEpochTiles()
         external
         view
-        returns (ClaimRecord[GRID_SIZE] memory)
+        returns (ClaimRecord[GRID_SIZE] memory result)
     {
-        uint16[GRID_SIZE] memory _idx; // unused; satisfy stack
-        _idx; // silence unused
-        ClaimRecord[GRID_SIZE] memory result;
         uint64 e = currentEpoch();
         for (uint16 i = 0; i < GRID_SIZE; i++) {
             result[i] = tileClaim[i][e];
         }
-        return result;
     }
 
     // -----------------------------------------------------------------
@@ -388,12 +384,13 @@ contract TileEngine {
         return r % SELECTION_DENOM < SELECTION_RATE_BPS;
     }
 
-    /// @dev Draws a multiplier from the locked weight table.
+    /// @dev Draws a multiplier from the locked weight table. Must stay
+    ///      in lock-step with EXPECTED_MULTIPLIER_SCALED above.
     ///      r mod 16:
-    ///          0..9   →  1×  (60%)
-    ///          A..C   →  2×  (25%)
-    ///          D..E   →  3×  (12%)
-    ///          F      →  4×  ( 3%)  (3.125% nominal; close enough for spec)
+    ///          0..9   →  1×  (10/16 = 62.5%)
+    ///          A..C   →  2×  ( 3/16 = 18.75%)
+    ///          D..E   →  3×  ( 2/16 = 12.5%)
+    ///          F      →  4×  ( 1/16 =  6.25%)
     function _drawMultiplier(uint16 tileIdx) private view returns (uint8) {
         uint256 r = uint256(
             keccak256(
