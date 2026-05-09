@@ -117,7 +117,7 @@ The TileEngine runs a 12×12 = 144 cell grid. Once per 24h epoch, any address ho
 
 The `Genesis.sol` contract performs the entire deployment in one constructor:
 
-1. CREATE2-deploys `AscendHookV2` with the salt mined off-chain to encode the required V4 permission flags (`afterInitialize`, `beforeAddLiquidity`, `beforeSwap`, `afterSwap`).
+1. CREATE2-deploys `AscendHookV2` with the salt mined off-chain to encode the required V4 permission flags (`afterInitialize`, `beforeAddLiquidity`, `beforeSwap`).
 2. The hook's constructor deploys the `Ascend` ERC-20 (sole-minter wired to the hook), mints all 122M to the hook, and deploys the `TileEngine`.
 3. `Genesis` calls `poolManager.initialize(key, sqrtPriceX96)`. PoolManager calls back into the hook's `_afterInitialize`.
 4. `_afterInitialize` re-enters PoolManager via `unlock(GENESIS, sqrtPriceX96)`. The unlock callback calls `modifyLiquidity` to deposit all 122M ascend + 1 ETH at full range.
@@ -248,8 +248,7 @@ The hook has no admin function, no pause, no upgrade path, no migration mechanis
 - `_afterInitialize` (gated to one-shot, validates pool key)
 - `_beforeAddLiquidity` (rejects all callers except `address(this)`)
 - `_beforeSwap` (validates pool, computes fee, applies guards)
-- `_afterSwap` (no-op; fees collected lazily by `rebalance()`)
-- `rebalance` (permissionless, idempotent, guarded by reentrancy)
+- `rebalance` (permissionless, idempotent, guarded by reentrancy; collects accrued LP fees and routes 70/30 LP/TileEngine)
 - `receive` (rejects all ETH except from PoolManager)
 
 Nothing in the hook allows it to mint additional ascend, remove its own LP without re-adding equivalent depth, send ETH to arbitrary addresses, or change parameters.
@@ -339,7 +338,6 @@ Deployed values, all immutable:
 | `MAX_EFFECTIVE_FEE_PIPS`   | 100_000 (10%)        | hard cap on dynamic fee                            |
 | `ANTI_BOT_BLOCKS`          | 100                  | randomized launch-window fee tax                   |
 | `ANTI_BOT_MAX_EXTRA_PIPS`  | 10_000 (+1% max)     | upper end of the random extra fee                  |
-| `REBALANCE_THRESHOLD`      | 0.01 ether           | min accrued fees to amortize a rebalance           |
 | `LP_RANGE`                 | full range           | tickLower = MIN_TICK, tickUpper = MAX_TICK         |
 | `TICK_SPACING`             | 60                   | standard for non-fee-tier pools                    |
 | pool fee                   | dynamic              | hook overrides per swap                            |

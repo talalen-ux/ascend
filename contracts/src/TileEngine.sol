@@ -163,6 +163,7 @@ contract TileEngine {
     error PayoutFailed();
     error Reentrancy();
     error NotSelectedThisEpoch();
+    error ZeroAddress();
 
     // -----------------------------------------------------------------
     // constructor
@@ -171,8 +172,7 @@ contract TileEngine {
     /// @param _hook   the AscendHookV2 that will fund the reward pool
     /// @param _ascend the ERC-20 we check for MIN_HOLDING
     constructor(address _hook, IERC20 _ascend) {
-        require(_hook != address(0), "hook=0");
-        require(address(_ascend) != address(0), "ascend=0");
+        if (_hook == address(0) || address(_ascend) == address(0)) revert ZeroAddress();
         hook = _hook;
         ascend = _ascend;
         // Round genesis down to the start of the current EPOCH_LENGTH
@@ -190,9 +190,12 @@ contract TileEngine {
     function depositReward() external payable {
         if (msg.sender != hook) revert NotHook();
         _advanceEpochIfNeeded();
-        currentEpochPool += msg.value;
-        epochPool[liveEpoch] += msg.value;
-        emit RewardDeposited(liveEpoch, msg.value, currentEpochPool);
+        uint256 amount = msg.value;
+        uint256 newPool = currentEpochPool + amount;
+        currentEpochPool = newPool;
+        uint64 epoch = liveEpoch;
+        epochPool[epoch] += amount;
+        emit RewardDeposited(epoch, amount, newPool);
     }
 
     // -----------------------------------------------------------------
@@ -216,46 +219,50 @@ contract TileEngine {
         _advanceEpochIfNeeded();
 
         if (tileIdx >= GRID_SIZE) revert TileOutOfRange();
-        // Sentinel: lastClaimEpoch[u] == liveEpoch + 1 means "u claimed
-        // in liveEpoch". The +1 keeps 0 reserved for "never claimed" so
-        // a fresh user can claim in epoch 0 without a special case.
-        if (lastClaimEpoch[msg.sender] == liveEpoch + 1) revert AlreadyClaimedThisEpoch();
-        if (tileClaim[tileIdx][liveEpoch].claimer != address(0)) revert TileAlreadyClaimed();
+        // Cache hot storage to avoid repeated SLOADs.
+        uint64 epoch = liveEpoch;
+        // Sentinel: lastClaimEpoch[u] == epoch + 1 means "u claimed in
+        // `epoch`". The +1 keeps 0 reserved for "never claimed" so a
+        // fresh user can claim in epoch 0 without a special case.
+        if (lastClaimEpoch[msg.sender] == epoch + 1) revert AlreadyClaimedThisEpoch();
+        if (tileClaim[tileIdx][epoch].claimer != address(0)) revert TileAlreadyClaimed();
         if (ascend.balanceOf(msg.sender) < MIN_HOLDING) revert InsufficientHoldings();
-        if (currentEpochPool == 0) revert EpochPoolEmpty();
+        uint256 pool = currentEpochPool;
+        if (pool == 0) revert EpochPoolEmpty();
         // Daily 68% selection: pseudorandom but deterministic per
-        // (epochSeed[liveEpoch], msg.sender). The seed was set at the
+        // (epochSeed[epoch], msg.sender). The seed was set at the
         // first activity of the epoch and cannot be predicted before
         // its block was mined.
-        if (!_isSelected(msg.sender, liveEpoch)) revert NotSelectedThisEpoch();
+        if (!_isSelected(msg.sender, epoch)) revert NotSelectedThisEpoch();
 
-        multiplier = _drawMultiplier(tileIdx);
+        multiplier = _drawMultiplier(tileIdx, epoch);
 
         // Base reward = pool / GRID_SIZE / E[m].
         // EXPECTED_MULTIPLIER_SCALED is in 1e6 fixed-point.
-        uint256 baseReward = (currentEpochPool * 1_000_000) / GRID_SIZE / EXPECTED_MULTIPLIER_SCALED;
+        uint256 baseReward = (pool * 1_000_000) / GRID_SIZE / EXPECTED_MULTIPLIER_SCALED;
         reward = baseReward * multiplier;
 
         // Solvency cap: never pay more than what's left in the pool
         // (TI-1). The last claimers in a high-multiplier epoch may
         // receive less than their notional reward.
-        uint256 remaining = currentEpochPool - currentEpochPaidOut;
+        uint256 paidOut = currentEpochPaidOut;
+        uint256 remaining = pool - paidOut;
         if (reward > remaining) reward = remaining;
 
-        tileClaim[tileIdx][liveEpoch] = ClaimRecord({
+        tileClaim[tileIdx][epoch] = ClaimRecord({
             claimer: msg.sender,
             multiplier: multiplier,
             reward: uint128(reward)
         });
-        lastClaimEpoch[msg.sender] = liveEpoch + 1; // sentinel: "claimed in `liveEpoch`"
-        currentEpochPaidOut += reward;
-        epochPaidOut[liveEpoch] = currentEpochPaidOut;
+        lastClaimEpoch[msg.sender] = epoch + 1;
+        paidOut += reward;
+        currentEpochPaidOut = paidOut;
+        epochPaidOut[epoch] = paidOut;
 
-        emit TileClaimed(msg.sender, tileIdx, liveEpoch, multiplier, reward);
+        emit TileClaimed(msg.sender, tileIdx, epoch, multiplier, reward);
 
-        // Pay out via low-level call. Done LAST after all state writes
-        // (CEI). The reentrancy guard around this whole function is a
-        // belt-and-suspenders measure.
+        // CEI: state writes done; pay out last. The reentrancy guard
+        // around this whole function is belt-and-suspenders.
         (bool ok, ) = msg.sender.call{value: reward}("");
         if (!ok) revert PayoutFailed();
 
@@ -348,16 +355,20 @@ contract TileEngine {
     ///      thereafter.
     function _advanceEpochIfNeeded() private {
         uint64 nowEpoch = currentEpoch();
+        uint64 prevEpoch = liveEpoch;
 
-        if (nowEpoch != liveEpoch) {
-            // Roll over unclaimed share to the new epoch.
+        if (nowEpoch != prevEpoch) {
+            // Roll over unclaimed share to the new epoch. epochPool for
+            // the new key is necessarily zero (this branch fires the
+            // very first time we observe `nowEpoch`), so `= rollover`
+            // is equivalent to `+= rollover` and saves a cold SLOAD.
             uint256 rollover = currentEpochPool - currentEpochPaidOut;
-            emit EpochAdvanced(liveEpoch, nowEpoch, rollover);
+            emit EpochAdvanced(prevEpoch, nowEpoch, rollover);
 
             liveEpoch = nowEpoch;
             currentEpochPool = rollover;
             currentEpochPaidOut = 0;
-            epochPool[nowEpoch] += rollover; // initial seed of new epoch from rollover
+            epochPool[nowEpoch] = rollover;
         }
 
         // Lock the per-epoch selection seed exactly once, including
@@ -391,7 +402,7 @@ contract TileEngine {
     ///          A..C   →  2×  ( 3/16 = 18.75%)
     ///          D..E   →  3×  ( 2/16 = 12.5%)
     ///          F      →  4×  ( 1/16 =  6.25%)
-    function _drawMultiplier(uint16 tileIdx) private view returns (uint8) {
+    function _drawMultiplier(uint16 tileIdx, uint64 epoch) private view returns (uint8) {
         uint256 r = uint256(
             keccak256(
                 abi.encode(
@@ -399,7 +410,7 @@ contract TileEngine {
                     block.prevrandao,
                     msg.sender,
                     tileIdx,
-                    liveEpoch
+                    epoch
                 )
             )
         );

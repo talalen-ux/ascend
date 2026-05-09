@@ -13,9 +13,10 @@ contract Ascend is ERC20 {
     address public immutable hook;
 
     error NotHook();
+    error ZeroHook();
 
     constructor(address _hook) ERC20("ascend", "ascend") {
-        require(_hook != address(0), "hook=0");
+        if (_hook == address(0)) revert ZeroHook();
         hook = _hook;
     }
 

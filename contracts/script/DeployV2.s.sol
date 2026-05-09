@@ -36,7 +36,6 @@ contract DeployV2 is Script {
             Hooks.AFTER_INITIALIZE_FLAG
                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_SWAP_FLAG
         );
 
         // 2. Mine a salt that produces a hook address with those bits.

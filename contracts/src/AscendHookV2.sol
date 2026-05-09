@@ -12,7 +12,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
@@ -49,8 +48,11 @@ import {TileEngine} from "./TileEngine.sol";
 ///         Hook permissions (encoded in the deployed CREATE2 address):
 ///           afterInitialize       (validate pool config + bind + seed LP)
 ///           beforeAddLiquidity    (reject all external LP adds)
-///           beforeSwap            (apply 5% dynamic fee)
-///           afterSwap             (split fee + trigger rebalance)
+///           beforeSwap            (apply 1% dynamic fee + anti-MEV gates)
+///
+///         No afterSwap: fee handling is deferred to permissionless
+///         rebalance() — keeping the fee accrual native to V4's position
+///         accounting and saving the per-swap dispatch gas.
 ///
 ///         Invariants (proofs in docs/V2_DESIGN.md, appendix A):
 ///           floor(t)   = ETH_in_LP(t) / circulating(t)
@@ -62,9 +64,6 @@ import {TileEngine} from "./TileEngine.sol";
 contract AscendHookV2 is BaseHook {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
-    using SafeCast for uint256;
-    using SafeCast for int256;
-    using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
 
     // -----------------------------------------------------------------
@@ -108,11 +107,6 @@ contract AscendHookV2 is BaseHook {
     ///         (1_000_000 = 100%) but we cap stricter to avoid silent
     ///         100%-fee mints on dust amounts. 10% absolute cap.
     uint24 public constant MAX_EFFECTIVE_FEE_PIPS = 100_000;
-
-    /// @notice Rebalance is gated on this much accumulated fee to amortize
-    ///         the gas cost of `removeLiquidity` + `addLiquidity` across
-    ///         many small swaps.
-    uint256 public constant REBALANCE_THRESHOLD = 0.01 ether;
 
     /// @notice The ascend ERC-20. Deployed and minted by this hook in
     ///         `constructor`. Sole minter forever.
@@ -160,20 +154,6 @@ contract AscendHookV2 is BaseHook {
     // events
     // -----------------------------------------------------------------
 
-    event Buy(
-        address indexed swapper,
-        uint256 ethIn,
-        uint256 fee,
-        uint256 ascendOut,
-        uint256 newFloor
-    );
-    event Sell(
-        address indexed swapper,
-        uint256 ascendIn,
-        uint256 fee,
-        uint256 ethOut,
-        uint256 newFloor
-    );
     event Rebalanced(uint256 feesAdded, uint128 newLiquidity, uint256 newFloor);
     event PoolBound(PoolId indexed poolId);
 
@@ -239,7 +219,7 @@ contract AscendHookV2 is BaseHook {
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: true,
-            afterSwap: true,
+            afterSwap: false,
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
@@ -428,15 +408,15 @@ contract AscendHookV2 is BaseHook {
     }
 
     // -----------------------------------------------------------------
-    // afterSwap — analytics only; fees are collected by rebalance()
+    // fee collection is deferred to rebalance()
     // -----------------------------------------------------------------
     //
     // The dynamic fee set in beforeSwap (1% base + surcharges, capped at
     // MAX_EFFECTIVE_FEE_PIPS) is taken by PoolManager from the swap input
-    // and credited to the LP token holders. Since this hook is the sole
-    // LP, every wei of fee accrues to our position's claimable balance.
-    // The actual collection + split happens in rebalance() — we don't
-    // pay the gas in afterSwap.
+    // and credited to the LP. Since this hook is the sole LP, every wei
+    // of fee accrues to our position's claimable balance natively. We
+    // intentionally do NOT register an afterSwap callback — the per-swap
+    // dispatch is wasted gas when the work happens in batched rebalance().
     //
     // Anyone can call rebalance() when accumulated fees ≥
     // REBALANCE_THRESHOLD; bots and holders are economically motivated
@@ -475,17 +455,6 @@ contract AscendHookV2 is BaseHook {
 
         if (total > MAX_EFFECTIVE_FEE_PIPS) total = MAX_EFFECTIVE_FEE_PIPS;
         return uint24(total);
-    }
-
-    function _afterSwap(
-        address,
-        PoolKey calldata,
-        SwapParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) internal virtual override returns (bytes4, int128) {
-        // No-op. Fee handling is deferred to rebalance().
-        return (BaseHook.afterSwap.selector, 0);
     }
 
     // -----------------------------------------------------------------

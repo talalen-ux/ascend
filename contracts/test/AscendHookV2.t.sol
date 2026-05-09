@@ -52,7 +52,6 @@ contract AscendHookV2Test is Test, Deployers {
             Hooks.AFTER_INITIALIZE_FLAG
                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_SWAP_FLAG
         );
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -123,7 +122,6 @@ contract AscendHookV2Test is Test, Deployers {
             Hooks.AFTER_INITIALIZE_FLAG
                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_SWAP_FLAG
         );
         (, bytes32 saltZero) = HookMiner.find(
             address(this),
