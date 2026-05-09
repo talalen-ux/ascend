@@ -9,6 +9,26 @@ const fmt = (n: number, d = 4) =>
 const fmtPrice = (n: number) =>
   n < 1e-4 ? n.toExponential(3) : fmt(n, 8);
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.06,
+      delayChildren: 0.05,
+    },
+  },
+};
+
+const cellVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
 export function State() {
   const {
     floorEth,
@@ -38,9 +58,10 @@ export function State() {
       </header>
 
       <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        variants={containerVariants}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-30px" }}
         className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-edge bg-edge md:grid-cols-3"
       >
         <Cell
@@ -91,16 +112,26 @@ function Cell({
   emphasis?: boolean;
 }) {
   return (
-    <div className="bg-canvas px-5 py-5">
+    <motion.div
+      variants={cellVariants}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+      className="group relative bg-canvas px-5 py-5 transition-colors hover:bg-canvas/60"
+    >
+      {/* Subtle accent edge that fades in on hover. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[2px] origin-left scale-x-0 bg-gradient-to-r from-transparent via-accent to-transparent opacity-0 transition-all duration-500 group-hover:scale-x-100 group-hover:opacity-100"
+      />
       <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">{label}</div>
       <div
-        className={`mt-2 font-mono tabular ${
+        className={`mt-2 font-mono tabular transition-colors ${
           emphasis ? "text-[22px] text-accent" : "text-[18px] text-bone"
         }`}
       >
         {value}
       </div>
       <div className="mt-1 font-mono text-[10px] text-ash">{hint}</div>
-    </div>
+    </motion.div>
   );
 }

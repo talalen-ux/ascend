@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "framer-motion";
 import {
   Area,
   AreaChart,
@@ -32,7 +33,13 @@ export function Projection() {
   );
 
   return (
-    <section className="panel p-6">
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      className="panel p-6"
+    >
       <header className="mb-5 flex items-baseline justify-between">
         <div>
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
@@ -45,15 +52,18 @@ export function Projection() {
         </div>
         <div className="flex rounded-md border border-edge p-0.5 text-[11px]">
           {SCENARIOS.map((s, i) => (
-            <button
+            <motion.button
               key={s.label}
               onClick={() => setScenario(i)}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ duration: 0.15 }}
               className={`px-3 py-1 uppercase tracking-widest transition ${
                 scenario === i ? "bg-bone text-ink" : "text-ash hover:text-bone"
               }`}
             >
               {s.label}
-            </button>
+            </motion.button>
           ))}
         </div>
       </header>
@@ -113,6 +123,6 @@ export function Projection() {
           </AreaChart>
         </ResponsiveContainer>
       </div>
-    </section>
+    </motion.section>
   );
 }

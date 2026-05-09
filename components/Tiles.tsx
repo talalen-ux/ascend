@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import { useAccount } from "wagmi";
 import { useTilesState, useClaimTile, addressTail, type TileSlot } from "@/hooks/useTiles";
+
+interface TileReveal {
+  tileIdx: number;
+  multiplier: number;
+  rewardEth: number;
+}
 
 const GRID_COLS = 12;
 const GRID_ROWS = 12;
@@ -47,6 +53,21 @@ export function Tiles() {
   const state = useTilesState();
   const { claim, pendingTile, pending, isSuccess, reveal, dismissReveal } = useClaimTile();
 
+  // Demo reveal: a marketing-only "what does the claim screen look
+  // like?" trigger. It mounts the same RevealModal component the live
+  // claim flow uses, populated with sample data. No on-chain effect.
+  const [demoReveal, setDemoReveal] = useState<TileReveal | null>(null);
+  const activeReveal = reveal ?? demoReveal;
+  const closeReveal = () => {
+    if (demoReveal) setDemoReveal(null);
+    else dismissReveal();
+  };
+  function showDemoReveal() {
+    // Pick a believable mid-pool reward at typical mainnet volume
+    // (~$1M/day → tile pool $3.6k → base reward ~0.0066 ETH × 3 ≈ 0.02).
+    setDemoReveal({ tileIdx: 73, multiplier: 3, rewardEth: 0.0204 });
+  }
+
   const epochLabel = useMemo(() => {
     if (!state.configured) return "demo";
     return `epoch #${state.currentEpoch.toString()}`;
@@ -87,13 +108,21 @@ export function Tiles() {
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
-            Tiles · the share
+            Ascension Grid
           </h2>
           <p className="mt-2 text-[14px] text-bone">
             {state.configured
               ? `${remaining} of ${TOTAL} tiles open · ${epochLabel}`
-              : "tiles unlock when the v2 contracts are live"}
+              : "the cryptographic surface — live once contracts ship"}
           </p>
+          <button
+            type="button"
+            onClick={showDemoReveal}
+            className="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest2 text-accent/80 transition hover:text-accent"
+          >
+            <span>preview a 3× claim</span>
+            <span aria-hidden>→</span>
+          </button>
         </div>
         <div className="flex flex-col items-end font-mono text-[11px] text-ash">
           <span>
@@ -195,46 +224,83 @@ export function Tiles() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {reveal && (
+        {activeReveal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 backdrop-blur-sm"
-            onClick={dismissReveal}
+            onClick={closeReveal}
           >
             <motion.div
               initial={{ scale: 0.85, rotateY: -90 }}
               animate={{ scale: 1, rotateY: 0 }}
               exit={{ scale: 0.85, opacity: 0 }}
-              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="panel mx-6 max-w-sm w-full p-8 text-center"
+              className="relative panel mx-6 max-w-sm w-full p-8 text-center overflow-hidden"
             >
-              <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-                Tile #{reveal.tileIdx} flipped
+              {/* Halo glow behind the multiplier */}
+              <motion.div
+                aria-hidden
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 0.65, scale: 1 }}
+                transition={{ duration: 0.9, delay: 0.15 }}
+                className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+                style={{
+                  background:
+                    "radial-gradient(closest-side, rgba(197,238,71,0.55), transparent 70%)",
+                }}
+              />
+
+              {demoReveal && (
+                <div className="relative mb-3 inline-block rounded-full bg-bone/10 px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-widest2 text-bone/70">
+                  preview · sample data
+                </div>
+              )}
+
+              <div className="relative text-[10px] font-medium uppercase tracking-widest2 text-ash">
+                Tile #{activeReveal.tileIdx} flipped
               </div>
-              <div className="mt-4 font-mono text-[64px] leading-none text-accent">
-                ×{reveal.multiplier}
-              </div>
-              <div className="mt-3 text-[11px] uppercase tracking-widest2 text-ash">
+
+              <motion.div
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="relative mt-4 font-mono text-[72px] leading-none text-accent drop-shadow-[0_0_24px_rgba(197,238,71,0.45)]"
+              >
+                ×{activeReveal.multiplier}
+              </motion.div>
+
+              <div className="relative mt-3 text-[11px] uppercase tracking-widest2 text-ash">
                 multiplier
               </div>
-              <div className="hairline my-6" />
-              <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+              <div className="relative hairline my-6" />
+              <div className="relative text-[10px] font-medium uppercase tracking-widest2 text-ash">
                 reward
               </div>
-              <div className="mt-2 font-mono tabular text-[28px] text-bone">
-                {fmtEth(reveal.rewardEth)}
-              </div>
-              <div className="mt-1 font-mono text-[11px] text-ash">
-                ≈ {fmtUsd(reveal.rewardEth * ETH_USD)} · sent to your wallet
-              </div>
-              <button
-                onClick={dismissReveal}
-                className="mt-7 w-full rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-[11px] font-medium uppercase tracking-widest text-accent transition hover:bg-accent/15"
+              <motion.div
+                initial={{ y: 8, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.35 }}
+                className="relative mt-2 font-mono tabular text-[28px] text-bone"
               >
-                close
+                {fmtEth(activeReveal.rewardEth)}
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.45 }}
+                className="relative mt-1 font-mono text-[11px] text-ash"
+              >
+                ≈ {fmtUsd(activeReveal.rewardEth * ETH_USD)}
+                {demoReveal ? " · this is what a real claim looks like" : " · sent to your wallet"}
+              </motion.div>
+              <button
+                onClick={closeReveal}
+                className="relative mt-7 w-full rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-[11px] font-medium uppercase tracking-widest text-accent transition hover:bg-accent/15"
+              >
+                {demoReveal ? "close preview" : "close"}
               </button>
             </motion.div>
           </motion.div>
