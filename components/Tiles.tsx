@@ -12,6 +12,26 @@ const TOTAL = GRID_COLS * GRID_ROWS;
 const ETH_USD = 2_350;
 
 /**
+ * The connected wallet's status with respect to today's tile epoch.
+ * Drives the back-face content of every OPEN tile so the user can see
+ * at a glance whether they have a reward they can claim.
+ *
+ *   demo          contracts not yet wired (pre-launch)
+ *   disconnected  wallet not connected
+ *   not-selected  in the 32% who don't get a draw today
+ *   claimed       already flipped a tile this epoch
+ *   ineligible    other reason canClaim is false (no holding, etc.)
+ *   ready         in today's draw, hasn't claimed yet — flip me!
+ */
+type UserStatus =
+  | "demo"
+  | "disconnected"
+  | "not-selected"
+  | "claimed"
+  | "ineligible"
+  | "ready";
+
+/**
  * The tile-flip game. A 12×12 grid where each tile is claimable once
  * per 24h epoch by any holder of ≥ 1 ascend who is in the random 68%
  * selection cohort for that epoch. Click → flip → reveal a 1×–4×
@@ -23,7 +43,7 @@ const ETH_USD = 2_350;
  *   - open tiles     → mesmerizing green halo glow behind the tile
  */
 export function Tiles() {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const state = useTilesState();
   const { claim, pendingTile, pending, isSuccess, reveal, dismissReveal } = useClaimTile();
 
@@ -36,6 +56,25 @@ export function Tiles() {
     () => state.tiles.filter((t) => t.claimer === null).length,
     [state.tiles],
   );
+
+  // Index of the tile (if any) the connected wallet has already
+  // claimed this epoch. -1 if not claimed.
+  const ownTileIdx = useMemo(() => {
+    const me = address?.toLowerCase();
+    if (!me) return -1;
+    return state.tiles.findIndex((t) => t.claimer?.toLowerCase() === me);
+  }, [state.tiles, address]);
+
+  // Compact status used by every open tile's back face. Computed once
+  // here so we don't recompute it 144 times.
+  const userStatus: UserStatus = useMemo(() => {
+    if (!state.configured) return "demo";
+    if (!isConnected) return "disconnected";
+    if (ownTileIdx >= 0) return "claimed";
+    if (!state.isSelectedThisEpoch) return "not-selected";
+    if (!state.canClaim) return "ineligible";
+    return "ready";
+  }, [state.configured, isConnected, ownTileIdx, state.isSelectedThisEpoch, state.canClaim]);
 
   function handleClick(idx: number) {
     if (!state.configured || !isConnected || !state.canClaim) return;
@@ -74,6 +113,10 @@ export function Tiles() {
       >
         {state.tiles.map((tile, i) => {
           const taken = tile.claimer !== null;
+          const isOwn =
+            taken &&
+            !!address &&
+            tile.claimer?.toLowerCase() === address.toLowerCase();
           const isPending = pendingTile === i && pending;
           const delay = ((i % GRID_COLS) + Math.floor(i / GRID_COLS)) * 0.012;
 
@@ -83,16 +126,18 @@ export function Tiles() {
               idx={i}
               tile={tile}
               taken={taken}
+              isOwn={isOwn}
               isPending={isPending}
               entryDelay={delay}
               clickable={!taken && state.canClaim && state.configured && isConnected && !pending}
+              userStatus={userStatus}
+              userTail={address ? addressTail(address) : ""}
+              baseRewardEth={state.baseRewardEth}
               onClick={() => handleClick(i)}
               tooltip={tooltipFor({
                 taken,
-                configured: state.configured,
-                isConnected,
-                canClaim: state.canClaim,
-                isSelected: state.isSelectedThisEpoch,
+                isOwn,
+                userStatus,
               })}
             />
           );
@@ -203,9 +248,13 @@ interface TileProps {
   idx: number;
   tile: TileSlot;
   taken: boolean;
+  isOwn: boolean;
   isPending: boolean;
   entryDelay: number;
   clickable: boolean;
+  userStatus: UserStatus;
+  userTail: string;
+  baseRewardEth: number;
   onClick: () => void;
   tooltip: string;
 }
@@ -213,14 +262,35 @@ interface TileProps {
 /**
  * Individual tile cell. Two-layer DOM:
  *   - the halo (absolute, behind, only visible on hover)
- *   - the flip card (front + back faces, rotated on hover when taken)
+ *   - the flip card (front + back faces, rotated on hover)
  *
- * The halo is a radial gradient that pulses subtly via animate-breathe.
- * The flip uses CSS 3D transforms with backface-visibility:hidden on
- * each face. Open tiles flip too, but their back is intentionally
- * sparse ("OPEN") since there's nothing to reveal yet.
+ * The halo is a radial green gradient that fades in on hover. The
+ * flip uses CSS 3D transforms with backface-visibility:hidden on each
+ * face.
+ *
+ * The back face is contextual:
+ *   - claimed by ANYONE: shows ×N · reward · claimer-tail
+ *     (highlighted differently if `isOwn` is true — that tile is the
+ *     connected wallet's own claim from this epoch)
+ *   - OPEN tile: shows the connected wallet's status — "FLIP ME",
+ *     "CLAIMED", "OUT TODAY", "CONNECT" — so users can check on any
+ *     tile whether they have a claim available without needing to
+ *     guess. Open-tile back-face data is identical for all 144
+ *     because there's only one possible answer per wallet per epoch.
  */
-function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip }: TileProps) {
+function Tile({
+  tile,
+  taken,
+  isOwn,
+  isPending,
+  entryDelay,
+  clickable,
+  userStatus,
+  userTail,
+  baseRewardEth,
+  onClick,
+  tooltip,
+}: TileProps) {
   return (
     <motion.div
       className="relative aspect-square"
@@ -228,8 +298,7 @@ function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip 
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, delay: entryDelay, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Mesmerizing halo: radial green gradient that fades in on hover.
-          Sized larger than the tile so it bleeds into the surroundings. */}
+      {/* Mesmerizing halo: radial green gradient that fades in on hover. */}
       <div
         aria-hidden
         className={clsx(
@@ -253,8 +322,6 @@ function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip 
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
         )}
       >
-        {/* Flip container: rotates on hover (always for taken tiles, so you
-            can read the reveal; muted for open tiles since back is sparse). */}
         <div
           className={clsx(
             "relative h-full w-full transition-transform duration-500 ease-out",
@@ -268,7 +335,9 @@ function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip 
             className={clsx(
               "absolute inset-0 rounded-[2px] [backface-visibility:hidden]",
               taken
-                ? "bg-accent shadow-[0_0_8px_-1px_rgba(197,238,71,0.5)]"
+                ? isOwn
+                  ? "bg-accent shadow-[0_0_14px_0_rgba(197,238,71,0.85)] ring-2 ring-bone"
+                  : "bg-accent shadow-[0_0_8px_-1px_rgba(197,238,71,0.5)]"
                 : "bg-edge",
               isPending && "ring-1 ring-accent",
             )}
@@ -280,8 +349,10 @@ function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip 
               "absolute inset-0 flex flex-col items-center justify-center rounded-[2px]",
               "[backface-visibility:hidden] [transform:rotateY(180deg)]",
               taken
-                ? "bg-accent/20 ring-1 ring-accent/60"
-                : "bg-edge/60 ring-1 ring-ash/40",
+                ? isOwn
+                  ? "bg-accent/40 ring-1 ring-bone"
+                  : "bg-accent/20 ring-1 ring-accent/60"
+                : openBackBg(userStatus),
             )}
           >
             {taken ? (
@@ -292,14 +363,21 @@ function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip 
                 <span className="font-mono text-[7px] leading-tight tabular text-bone">
                   {fmtEthMicro(tile.rewardEth)}
                 </span>
-                <span className="font-mono text-[6px] leading-tight tabular text-ash">
-                  {addressTail(tile.claimer)}
+                <span
+                  className={clsx(
+                    "font-mono text-[6px] leading-tight tabular",
+                    isOwn ? "font-bold text-bone" : "text-ash",
+                  )}
+                >
+                  {isOwn ? "YOU" : addressTail(tile.claimer)}
                 </span>
               </>
             ) : (
-              <span className="font-mono text-[7px] uppercase tracking-widest2 text-ash">
-                open
-              </span>
+              <OpenBackContent
+                status={userStatus}
+                userTail={userTail}
+                baseRewardEth={baseRewardEth}
+              />
             )}
           </div>
         </div>
@@ -308,19 +386,137 @@ function Tile({ tile, taken, isPending, entryDelay, clickable, onClick, tooltip 
   );
 }
 
+/**
+ * Back-face content for an OPEN tile. Shows the connected wallet's
+ * eligibility for the current epoch so a user can hover any tile and
+ * see whether they can claim.
+ */
+function OpenBackContent({
+  status,
+  userTail,
+  baseRewardEth,
+}: {
+  status: UserStatus;
+  userTail: string;
+  baseRewardEth: number;
+}) {
+  switch (status) {
+    case "ready":
+      return (
+        <>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-accent">
+            flip me
+          </span>
+          <span className="font-mono text-[6px] leading-tight tabular text-bone">
+            ~{fmtEthMicro(baseRewardEth * 1.625)}
+          </span>
+          <span className="font-mono text-[6px] leading-tight tabular text-ash">
+            {userTail}
+          </span>
+        </>
+      );
+    case "claimed":
+      return (
+        <>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-bone">
+            already
+          </span>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-bone">
+            claimed
+          </span>
+          <span className="font-mono text-[6px] leading-tight tabular text-ash">
+            {userTail}
+          </span>
+        </>
+      );
+    case "not-selected":
+      return (
+        <>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-ash">
+            32% out
+          </span>
+          <span className="font-mono text-[6px] uppercase tracking-widest2 text-ash">
+            try
+          </span>
+          <span className="font-mono text-[6px] uppercase tracking-widest2 text-ash">
+            tomorrow
+          </span>
+        </>
+      );
+    case "ineligible":
+      return (
+        <>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-ash">
+            no
+          </span>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-ash">
+            holding
+          </span>
+        </>
+      );
+    case "disconnected":
+      return (
+        <>
+          <span className="font-mono text-[7px] uppercase tracking-widest2 text-ash">
+            connect
+          </span>
+          <span className="font-mono text-[6px] uppercase tracking-widest2 text-ash">
+            wallet
+          </span>
+        </>
+      );
+    case "demo":
+    default:
+      return (
+        <span className="font-mono text-[7px] uppercase tracking-widest2 text-ash">
+          open
+        </span>
+      );
+  }
+}
+
+/** Background tint for the back-face of an OPEN tile, by user status. */
+function openBackBg(status: UserStatus): string {
+  switch (status) {
+    case "ready":
+      return "bg-accent/15 ring-1 ring-accent/60"; // inviting green
+    case "claimed":
+      return "bg-edge/80 ring-1 ring-bone/40";
+    case "not-selected":
+      return "bg-edge/60 ring-1 ring-ash/30";
+    case "ineligible":
+    case "disconnected":
+      return "bg-edge/60 ring-1 ring-ash/30";
+    case "demo":
+    default:
+      return "bg-edge/60 ring-1 ring-ash/30";
+  }
+}
+
 function tooltipFor(s: {
   taken: boolean;
-  configured: boolean;
-  isConnected: boolean;
-  canClaim: boolean;
-  isSelected: boolean;
+  isOwn: boolean;
+  userStatus: UserStatus;
 }): string {
-  if (s.taken) return "claimed this epoch — hover for details";
-  if (!s.configured) return "v2 contracts not yet live";
-  if (!s.isConnected) return "connect a wallet with ascend to claim";
-  if (!s.isSelected) return "you're not in today's random 68% — back tomorrow";
-  if (!s.canClaim) return "you've already claimed this epoch";
-  return "click to flip";
+  if (s.taken) {
+    return s.isOwn
+      ? "your claim this epoch — hover for details"
+      : "claimed this epoch — hover for details";
+  }
+  switch (s.userStatus) {
+    case "demo":
+      return "v2 contracts not yet live";
+    case "disconnected":
+      return "connect a wallet with ascend to claim";
+    case "not-selected":
+      return "you're not in today's random 68% — back tomorrow";
+    case "claimed":
+      return "you've already claimed this epoch";
+    case "ineligible":
+      return "you don't meet the holding requirement";
+    case "ready":
+      return "click to flip";
+  }
 }
 
 function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
