@@ -10,7 +10,7 @@ import { Mark } from "@/components/Mark";
 
 export default function Page() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10 md:py-14">
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 md:py-14">
       <Hero />
 
       <State />
@@ -27,7 +27,7 @@ export default function Page() {
 
       <Mechanism />
 
-      <footer className="mt-20 flex items-center justify-between gap-6 text-[11px] text-ash">
+      <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-[11px] text-ash sm:mt-20">
         <div className="flex items-center gap-3">
           <Mark size={20} />
           <span>LP-backed floor · tile rewards from volume · uniswap v4</span>

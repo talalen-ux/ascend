@@ -104,13 +104,13 @@ export function Tiles() {
   }
 
   return (
-    <section className="panel mt-10 p-7">
-      <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
+    <section className="panel mt-10 p-4 sm:p-5 md:p-7">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
             Ascension Grid
           </h2>
-          <p className="mt-2 text-[14px] text-bone">
+          <p className="mt-2 text-[13px] text-bone md:text-[14px]">
             {state.configured
               ? `${remaining} of ${TOTAL} tiles open · ${epochLabel}`
               : "the cryptographic surface — live once contracts ship"}
@@ -124,20 +124,19 @@ export function Tiles() {
             <span aria-hidden>→</span>
           </button>
         </div>
-        <div className="flex flex-col items-end font-mono text-[11px] text-ash">
+        <div className="flex flex-col items-end font-mono text-[10px] text-ash md:text-[11px]">
           <span>
             pool: <span className="text-bone">{fmtEth(state.poolEth)}</span>
           </span>
           <span>
-            base reward:{" "}
-            <span className="text-bone">{fmtEth(state.baseRewardEth)}</span> · 1×
+            base: <span className="text-bone">{fmtEth(state.baseRewardEth)}</span> · 1×
           </span>
-          <span className="text-ash/70">×1, ×2, ×3, or ×4 on flip</span>
+          <span className="text-ash/70">×1 / ×2 / ×3 / ×4 on flip</span>
         </div>
       </header>
 
       <div
-        className="relative mt-6 grid gap-[3px]"
+        className="relative mt-6 grid gap-[2px] sm:gap-[3px]"
         style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
       >
         {state.tiles.map((tile, i) => {
@@ -238,7 +237,7 @@ export function Tiles() {
               exit={{ scale: 0.85, opacity: 0 }}
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="relative panel mx-6 max-w-sm w-full p-8 text-center overflow-hidden"
+              className="relative panel mx-4 max-w-sm w-full p-6 text-center overflow-hidden sm:mx-6 sm:p-8"
             >
               {/* Halo glow behind the multiplier */}
               <motion.div
@@ -267,7 +266,7 @@ export function Tiles() {
                 initial={{ scale: 0.6, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                className="relative mt-4 font-mono text-[72px] leading-none text-accent drop-shadow-[0_0_24px_rgba(197,238,71,0.45)]"
+                className="relative mt-4 font-mono text-[56px] leading-none text-accent drop-shadow-[0_0_24px_rgba(197,238,71,0.45)] sm:text-[72px]"
               >
                 ×{activeReveal.multiplier}
               </motion.div>
@@ -359,21 +358,34 @@ function Tile({
 }: TileProps) {
   return (
     <motion.div
-      className="relative aspect-square"
+      className="group/tile relative aspect-square"
       initial={{ opacity: 0, scale: 0.6 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, delay: entryDelay, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Mesmerizing halo: radial green gradient that fades in on hover. */}
+      {/* Mesmerizing light-green halo. Two layers: a near-tile soft glow
+          and a wider bloom. Fades in on hover (desktop) and on touch
+          (mobile via :active). */}
       <div
         aria-hidden
         className={clsx(
-          "pointer-events-none absolute -inset-3 rounded-full opacity-0 blur-md transition-opacity duration-300",
-          "group-hover/tile:opacity-100",
+          "pointer-events-none absolute -inset-[10px] rounded-[8px] opacity-0 blur-[8px] transition-opacity duration-300",
+          "group-hover/tile:opacity-100 group-active/tile:opacity-100",
         )}
         style={{
           background:
-            "radial-gradient(closest-side, rgba(197,238,71,0.55), rgba(197,238,71,0.18) 55%, transparent 75%)",
+            "radial-gradient(closest-side, rgba(197,238,71,0.85), rgba(197,238,71,0.32) 55%, transparent 78%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className={clsx(
+          "pointer-events-none absolute -inset-5 rounded-full opacity-0 blur-2xl transition-opacity duration-500",
+          "group-hover/tile:opacity-90 group-active/tile:opacity-90",
+        )}
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(197,238,71,0.55), transparent 75%)",
         }}
       />
 
@@ -383,7 +395,7 @@ function Tile({
         disabled={!clickable}
         title={tooltip}
         className={clsx(
-          "group/tile relative h-full w-full cursor-pointer disabled:cursor-not-allowed",
+          "relative h-full w-full cursor-pointer disabled:cursor-not-allowed",
           "[perspective:600px]",
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
         )}
@@ -393,6 +405,7 @@ function Tile({
             "relative h-full w-full transition-transform duration-500 ease-out",
             "[transform-style:preserve-3d]",
             "group-hover/tile:[transform:rotateY(180deg)]",
+            "group-active/tile:[transform:rotateY(180deg)]",
             isPending && "[transform:rotateY(180deg)]",
           )}
         >
@@ -587,9 +600,9 @@ function tooltipFor(s: {
 
 function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="bg-canvas px-5 py-4">
+    <div className="bg-canvas px-3 py-3 sm:px-5 sm:py-4">
       <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">{label}</div>
-      <div className="mt-1.5 font-mono tabular text-[16px] text-bone">{value}</div>
+      <div className="mt-1.5 font-mono tabular text-[14px] text-bone sm:text-[16px]">{value}</div>
       <div className="mt-1 font-mono text-[10px] text-ash">{hint}</div>
     </div>
   );

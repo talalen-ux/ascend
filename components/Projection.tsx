@@ -38,7 +38,7 @@ export function Projection() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="panel p-6"
+      className="panel p-5 md:p-6"
     >
       <header className="mb-5 flex items-baseline justify-between">
         <div>

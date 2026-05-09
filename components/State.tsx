@@ -116,7 +116,7 @@ function Cell({
       variants={cellVariants}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2 }}
-      className="group relative bg-canvas px-5 py-5 transition-colors hover:bg-canvas/60"
+      className="group relative bg-canvas px-4 py-4 transition-colors hover:bg-canvas/60 md:px-5 md:py-5"
     >
       {/* Subtle accent edge that fades in on hover. */}
       <span
@@ -126,7 +126,7 @@ function Cell({
       <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">{label}</div>
       <div
         className={`mt-2 font-mono tabular transition-colors ${
-          emphasis ? "text-[22px] text-accent" : "text-[18px] text-bone"
+          emphasis ? "text-[19px] md:text-[22px] text-accent" : "text-[16px] md:text-[18px] text-bone"
         }`}
       >
         {value}

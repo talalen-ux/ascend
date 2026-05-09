@@ -50,7 +50,7 @@ export function Trade() {
   }, [amount, isBuy, state]);
 
   return (
-    <section className="panel p-7">
+    <section className="panel p-5 md:p-7">
       <header className="flex items-center justify-between">
         <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
           Issuance
@@ -83,7 +83,7 @@ export function Trade() {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
-            className="tabular w-full bg-transparent font-mono text-[40px] leading-none text-bone outline-none placeholder:text-ash/40"
+            className="tabular w-full bg-transparent font-mono text-[32px] leading-none text-bone outline-none placeholder:text-ash/40 md:text-[40px]"
             placeholder="0.00"
           />
           <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "ascend"}</span>

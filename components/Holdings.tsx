@@ -44,17 +44,17 @@ export function Holdings() {
   const perSquareUsd = perSquareEth * ETH_PRICE_USD;
 
   return (
-    <section className="panel mt-10 p-7">
-      <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
+    <section className="panel mt-10 p-4 sm:p-5 md:p-7">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
           <h2 className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
             Position
           </h2>
-          <p className="mt-2 text-[14px] text-bone">
+          <p className="mt-2 text-[13px] text-bone md:text-[14px]">
             {isConnected ? truncate(address) : "no wallet connected"}
           </p>
         </div>
-        <div className="font-mono text-[11px] text-ash">
+        <div className="font-mono text-[10px] text-ash md:text-[11px]">
           {balance > 0
             ? `each tile ≈ ${perSquareEth < 1e-4 ? perSquareEth.toExponential(2) : perSquareEth.toFixed(6)} ascend ($${perSquareUsd.toFixed(2)})`
             : "tiles unfilled — mine ascend to claim them"}
@@ -62,7 +62,7 @@ export function Holdings() {
       </header>
 
       <div
-        className="mt-6 grid gap-[3px]"
+        className="mt-6 grid gap-[2px] sm:gap-[3px]"
         style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
       >
         {Array.from({ length: TOTAL_SQUARES }).map((_, i) => {
@@ -132,9 +132,9 @@ export function Holdings() {
 
 function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="bg-canvas px-5 py-4">
+    <div className="bg-canvas px-3 py-3 sm:px-5 sm:py-4">
       <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">{label}</div>
-      <div className="mt-1.5 font-mono tabular text-[16px] text-bone">{value}</div>
+      <div className="mt-1.5 font-mono tabular text-[14px] text-bone sm:text-[16px]">{value}</div>
       <div className="mt-1 font-mono text-[10px] text-ash">{hint}</div>
     </div>
   );

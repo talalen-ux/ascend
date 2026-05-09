@@ -92,7 +92,7 @@ export function Mechanism() {
             variants={cardVariants}
             whileHover={{ y: -3 }}
             transition={{ duration: 0.25 }}
-            className="panel group relative overflow-hidden p-6"
+            className="panel group relative overflow-hidden p-5 md:p-6"
           >
             {/* Gradient sheen that sweeps across on hover. */}
             <span
