@@ -147,8 +147,8 @@ export function quoteSell(s: State, ascendIn: number) {
   if (ascendIn <= 0) return null;
   if (ascendIn >= s.reserveAscend) return null;
 
-  const fee = ascendIn * SWAP_FEE_RATE;
-  const net = ascendIn - fee;
+  const feeAscend = ascendIn * SWAP_FEE_RATE;
+  const net = ascendIn - feeAscend;
 
   // CP swap on net (fee stays in LP as ascend after the swap)
   const k = s.reserveEth * s.reserveAscend;
@@ -158,15 +158,26 @@ export function quoteSell(s: State, ascendIn: number) {
 
   // Fee retention: the 1% fee on the ascend side stays in the LP as X.
   // The ETH side of the LP keeps the post-swap value (no addition).
-  const xFinal = xAfterSwap + fee;
+  const xFinal = xAfterSwap + feeAscend;
   const yFinal = yAfterSwap;
+
+  // Express the fee in ETH so the dapp can display it in the same unit
+  // as `ethOut`. This is the ETH the seller forfeits to the protocol —
+  // i.e. (output if there were no fee) − (actual output).
+  const xNoFee = s.reserveAscend + ascendIn;
+  const yNoFee = k / xNoFee;
+  const ethOutNoFee = s.reserveEth - yNoFee;
+  const feeEth = ethOutNoFee - ethOut;
 
   const post: State = { reserveEth: yFinal, reserveAscend: xFinal };
 
   return {
     ethOut,
-    fee,
-    tilePortion: fee * TILE_SHARE,
+    fee: feeEth,
+    // Sells pay fees in ascend, which the on-chain rebalance donates
+    // 100% back to the LP — none routes to TileEngine. Only buy fees
+    // (charged in ETH) fund the tile pool.
+    tilePortion: 0,
     floorBefore: floorOf(s),
     floorAfter: floorOf(post),
     priceBefore: priceOf(s),

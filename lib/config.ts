@@ -20,7 +20,8 @@ export const isConfigured =
  */
 export function uniswapSwapUrl(): string {
   if (!isConfigured) return "https://app.uniswap.org/";
-  return `https://app.uniswap.org/swap?chain=mainnet&inputCurrency=ETH&outputCurrency=${ASCEND_TOKEN_ADDRESS}`;
+  const chain = CHAIN_ID === 11155111 ? "sepolia" : "mainnet";
+  return `https://app.uniswap.org/swap?chain=${chain}&inputCurrency=ETH&outputCurrency=${ASCEND_TOKEN_ADDRESS}`;
 }
 
 export function dexscreenerUrl(): string {

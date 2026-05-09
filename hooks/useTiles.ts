@@ -10,7 +10,7 @@ import {
 } from "wagmi";
 import { decodeEventLog, formatEther, type Log } from "viem";
 import { TILE_ENGINE_ABI } from "@/lib/abi";
-import { TILE_ENGINE_ADDRESS, isConfigured } from "@/lib/config";
+import { TILE_ENGINE_ADDRESS, CHAIN_ID, isConfigured } from "@/lib/config";
 
 const GRID_SIZE = 144;
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
@@ -89,21 +89,25 @@ export function useTilesState(): TilesState {
           address: TILE_ENGINE_ADDRESS as `0x${string}`,
           abi: TILE_ENGINE_ABI,
           functionName: "currentEpoch" as const,
+          chainId: CHAIN_ID,
         },
         {
           address: TILE_ENGINE_ADDRESS as `0x${string}`,
           abi: TILE_ENGINE_ABI,
           functionName: "currentEpochPool" as const,
+          chainId: CHAIN_ID,
         },
         {
           address: TILE_ENGINE_ADDRESS as `0x${string}`,
           abi: TILE_ENGINE_ABI,
           functionName: "currentBaseReward" as const,
+          chainId: CHAIN_ID,
         },
         {
           address: TILE_ENGINE_ADDRESS as `0x${string}`,
           abi: TILE_ENGINE_ABI,
           functionName: "currentEpochTiles" as const,
+          chainId: CHAIN_ID,
         },
       ] as const)
     : ([] as const);
@@ -127,6 +131,7 @@ export function useTilesState(): TilesState {
     abi: TILE_ENGINE_ABI,
     functionName: "canClaim",
     args: address ? [address] : undefined,
+    chainId: CHAIN_ID,
     query: { enabled: !!address && live, refetchInterval: 12_000 },
   });
 
@@ -135,6 +140,7 @@ export function useTilesState(): TilesState {
     abi: TILE_ENGINE_ABI,
     functionName: "isSelected",
     args: address ? [address, currentEpoch] : undefined,
+    chainId: CHAIN_ID,
     query: { enabled: !!address && live, refetchInterval: 12_000 },
   });
 

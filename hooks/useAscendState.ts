@@ -3,7 +3,13 @@
 import { useReadContracts } from "wagmi";
 import { formatEther } from "viem";
 import { ASCEND_HOOK_V2_ABI, ERC20_ABI } from "@/lib/abi";
-import { ASCEND_HOOK_ADDRESS, ASCEND_TOKEN_ADDRESS, isConfigured } from "@/lib/config";
+import {
+  ASCEND_HOOK_ADDRESS,
+  ASCEND_TOKEN_ADDRESS,
+  POOL_MANAGER_ADDRESS,
+  CHAIN_ID,
+  isConfigured,
+} from "@/lib/config";
 import { SUPPLY_CAP, BOOTSTRAP_ETH, type State } from "@/lib/floor";
 
 export interface AscendState extends State {
@@ -44,17 +50,27 @@ export function useAscendState(): AscendState {
             address: ASCEND_HOOK_ADDRESS as `0x${string}`,
             abi: ASCEND_HOOK_V2_ABI,
             functionName: "floor",
+            chainId: CHAIN_ID,
           },
           {
             address: ASCEND_TOKEN_ADDRESS as `0x${string}`,
             abi: ERC20_ABI,
             functionName: "balanceOf",
             args: [ASCEND_HOOK_ADDRESS as `0x${string}`],
+            chainId: CHAIN_ID,
+          },
+          {
+            address: ASCEND_TOKEN_ADDRESS as `0x${string}`,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [POOL_MANAGER_ADDRESS as `0x${string}`],
+            chainId: CHAIN_ID,
           },
           {
             address: ASCEND_HOOK_ADDRESS as `0x${string}`,
             abi: ASCEND_HOOK_V2_ABI,
             functionName: "liquidityHeld",
+            chainId: CHAIN_ID,
           },
         ] as const)
       : [],
@@ -65,26 +81,20 @@ export function useAscendState(): AscendState {
 
   // floor() returns ETH-per-ascend in 1e18 fixed-point.
   const floorEth = data?.[0]?.result ? Number(formatEther(data[0].result as bigint)) : 0;
-  // The hook holds 0 ascend in steady state — but if it does, that's
-  // not circulating. (It's also unused after the LP seed; included for
-  // completeness and parity with the on-chain _floor() formula.)
+  // Hook normally holds only the genesis dust from LiquidityAmounts rounding.
   const ascendOnHook = data?.[1]?.result ? Number(formatEther(data[1].result as bigint)) : 0;
+  // The bulk of supply lives on the V4 PoolManager — that's the LP-side balance.
+  const ascendInLP = data?.[2]?.result ? Number(formatEther(data[2].result as bigint)) : 0;
 
-  // We don't fetch the live LP composition directly here — that would
-  // require a poolManager state read. Instead, we approximate using the
-  // floor and the circulating quantity.
-  //
-  // We don't have a direct read of `reserveAscend` on-chain via the
-  // hook (would require a custom view), so we fall back to a rough
-  // approximation: assume circulating ≈ totalSupply - ascendOnHook for
-  // now, and reserveEth from the hook's external balance.
-  //
-  // For an accurate dapp, slice 9 added _floor() with all the math; an
-  // off-chain RPC read of pool slot0 + StateLibrary positions can give
-  // exact (X, Y). The fields below are best-effort until that's wired.
-  const reserveAscend = SUPPLY_CAP - ascendOnHook; // upper bound; LP holds the rest
-  const circulating = ascendOnHook;
-  const reserveEth = floorEth * Math.max(circulating, 1);
+  // Circulating = supply held outside the LP and outside the hook.
+  // Reserve (LP-side ascend) comes straight from PoolManager's balance
+  // since the hook is the only LP on this pool. ETH-side LP depth is
+  // implied by the floor identity Y = floor × circulating; a direct
+  // read of PoolManager's native balance would mix in every other V4
+  // pool's ETH so we don't use it here.
+  const circulating = Math.max(0, SUPPLY_CAP - ascendInLP - ascendOnHook);
+  const reserveAscend = ascendInLP;
+  const reserveEth = circulating > 0 ? floorEth * circulating : BOOTSTRAP_ETH;
   const priceEth = reserveAscend > 0 ? reserveEth / reserveAscend : 0;
   const marketCapEth = priceEth * circulating;
   const fdvEth = priceEth * SUPPLY_CAP;

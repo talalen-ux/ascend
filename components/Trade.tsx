@@ -12,7 +12,7 @@ export function Trade() {
   const state = useAscendState();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("0.1");
-  const { execute, approve, pending, error, ready, isSuccess, allowance } = useTrade();
+  const { execute, approve, pending, error, ready, isSuccess, allowance, wrongChain } = useTrade();
 
   const isBuy = side === "buy";
   const amountWei = (() => {
@@ -141,6 +141,8 @@ export function Trade() {
           ? "Demo · configure addresses to enable"
           : pending
           ? "Pending…"
+          : wrongChain
+          ? "Switch wallet to Sepolia"
           : !ready
           ? "Connect wallet"
           : needsApproval
