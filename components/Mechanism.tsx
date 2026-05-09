@@ -4,34 +4,40 @@ import { motion } from "framer-motion";
 
 const properties = [
   {
-    title: "One LP, one chart",
+    title: "a floor that compounds, not dilutes",
     body:
-      "ascend trades on a single Uniswap V4 pool whose only LP is the hook itself. buyers and sellers walk the same constant-product curve, so DexScreener prints normal green/red candles on a single price band. no admin, no governance, no upgrade path.",
+      "most crypto assets weaken over time through emissions, unlocks, and sell pressure. ascend compounds its structural base through participation itself — every swap permanently reinforces the underlying liquidity layer rather than borrowing against future supply.",
+    kicker: "the system becomes stronger as it is used.",
   },
   {
-    title: "Floor only goes up",
+    title: "permanent liquidity, not mercenary capital",
     body:
-      "every swap pays a 1% fee — buys also pay a flat ~$2 surcharge. 70% of every fee is retained in the LP, growing the ETH side without minting any ascend. the LP's lower bound — vault per circulating ascend — is monotone non-decreasing forever. holders have a redemption guarantee that compounds with volume.",
+      "traditional protocols rent liquidity, and when incentives disappear it leaves. ascend replaces mercenary LP behavior with protocol-native liquidity architecture: the market is structurally retained within the system, removing dependency on external capital providers.",
+    kicker: "liquidity becomes infrastructure.",
   },
   {
-    title: "Ascension Grid · the share",
+    title: "no emissions, no reflexive inflation spiral",
     body:
-      "30% of every swap fee funds a 12×12 cryptographic grid. once per 24h epoch, 68% of holders are selected at random — the chosen flip one tile and reveal a 1× to 4× multiplier on their share of the pool. the more volume, the bigger the prize. unclaimed tiles roll forward.",
+      "no inflationary rewards. no dilution-driven growth model. participation reinforces value instead of extracting it. ascend breaks the emissions cycle entirely — every unit of attention adds to the structural base instead of borrowing against it.",
+    kicker: "value compounds on use, not issuance.",
   },
   {
-    title: "Real liquidity",
+    title: "a structural redemption layer",
     body:
-      "the vault IS the LP. every wei of accumulated fee shows up as visible depth on Uniswap, DexScreener, and every aggregator. no off-pool routing, no honeypot heuristic flags, no two-band whipsaw. it looks normal because it is normal.",
+      "most assets are valued almost entirely by narrative and speculation. ascend introduces an embedded structural floor tied to the protocol's underlying liquidity density — as participation compounds, the backing per circulating unit increases over time, creating intrinsic reinforcement.",
+    kicker: "a fundamentally different risk profile.",
   },
   {
-    title: "No team, no presale",
+    title: "the Ascension Grid · a novel economic surface",
     body:
-      "122 million ascend, all minted into the LP at genesis. zero allocations. zero unlocks. the only path into circulation is to swap ETH for it through the V4 pool. the only path out is to swap ascend back. there is no other way.",
+      "ascend does not separate speculation from participation. the Ascension Grid embeds a cryptographic interaction layer directly into the economic flow. each epoch is a probabilistic expansion mechanism synchronized with protocol activity, transforming participation into an active surface rather than passive holding.",
+    kicker: "not farming. not staking. a native market mechanic.",
   },
   {
-    title: "Verifiable forever",
+    title: "ethereum-native from first principles",
     body:
-      "the LP composition, the floor, the tile pool, every swap fee, every claim — all readable on-chain via standard V4 reads. anyone can compute the floor. anyone can claim a tile. anyone can audit the curve. nothing is off-chain.",
+      "ascend is not a copied primitive. it could only exist through Uniswap V4 architecture and programmable hooks. rather than building another token around old market structures, ascend rearchitects the market itself: liquidity becomes autonomous, participation compounds the floor, economic activity reinforces the protocol rather than draining it.",
+    kicker: "a new market structure category on ethereum.",
   },
 ];
 
@@ -66,16 +72,16 @@ export function Mechanism() {
         className="max-w-2xl"
       >
         <p className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
-          Mechanism
+          structural edge
         </p>
         <h2 className="mt-3 text-2xl font-medium leading-tight text-bone md:text-[36px]">
-          a self-compounding asset with a share for everyone.
+          why ascend is structurally superior.
         </h2>
         <p className="mt-4 text-[14px] leading-relaxed text-ash">
-          ascend is a Uniswap V4 hook that owns its own pool. every swap
-          deepens the floor. every swap fills a tile. holders aren't
-          spectators — they have a deterministic, claimable share of the
-          protocol's volume, on-chain, every day.
+          emissions tokens dilute. mercenary LPs leave when incentives stop.
+          narrative-only assets have no floor. ascend rebuilds each of these
+          primitives from first principles — six structural reasons the
+          protocol gets stronger the more it is used.
         </p>
       </motion.header>
 
@@ -106,6 +112,9 @@ export function Mechanism() {
             />
             <h3 className="relative text-[15px] font-medium text-bone">{p.title}</h3>
             <p className="relative mt-2 text-[13px] leading-relaxed text-ash">{p.body}</p>
+            <p className="relative mt-3 font-mono text-[11px] uppercase tracking-widest2 text-accent">
+              {p.kicker}
+            </p>
           </motion.div>
         ))}
       </motion.div>
