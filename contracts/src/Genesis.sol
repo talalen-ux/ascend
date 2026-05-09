@@ -52,7 +52,6 @@ contract Genesis {
     PoolKey public poolKey;
 
     error WrongBootstrap();
-    error SaltMismatch(address predicted, address actual);
 
     constructor(
         IPoolManager poolManager,

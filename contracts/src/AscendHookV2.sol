@@ -89,9 +89,11 @@ contract AscendHookV2 is BaseHook {
     uint16 public constant SHARE_DENOM = 10_000;
 
     /// @notice Flat per-buy mint surcharge (~$2 at $2,350/ETH). Anti-spam
-    ///         + extra revenue. Routed entirely to the TileEngine via
-    ///         the dynamic-fee mechanism: we encode it as an extra
-    ///         pip-percentage of the swap, computed per swap by amount.
+    ///         + extra revenue. Encoded as an extra pip-percentage of the
+    ///         swap, computed per swap by amount, then folded into the
+    ///         dynamic fee. The surcharge is collected as part of the
+    ///         standard fee accrual and split 70/30 like every other fee
+    ///         (LP retention / TileEngine) in the next rebalance.
     ///         Naturally scales with ETH price.
     uint256 public constant MINT_FEE_WEI = 0.001 ether;
 
@@ -112,9 +114,10 @@ contract AscendHookV2 is BaseHook {
     ///         `constructor`. Sole minter forever.
     Ascend public immutable ascend;
 
-    /// @notice The tile-game contract. Receives the tile-share of every
-    ///         swap fee plus the entire MINT_FEE per buy.
-    ///         Deployed by this hook in the constructor, address is
+    /// @notice The tile-game contract. Receives 30% of every collected
+    ///         swap fee (including the buy-side mint surcharge, which is
+    ///         folded into the same fee path) at every rebalance.
+    ///         Deployed by this hook in the constructor; address is
     ///         immutable thereafter.
     TileEngine public immutable tileEngine;
 
@@ -294,7 +297,7 @@ contract AscendHookV2 is BaseHook {
     }
 
     // -----------------------------------------------------------------
-    // afterInitialize — validate pool, bind, seed the LP (slice 5 work)
+    // afterInitialize — validate pool, bind, seed the LP atomically
     // -----------------------------------------------------------------
 
     function _afterInitialize(
@@ -418,9 +421,10 @@ contract AscendHookV2 is BaseHook {
     // intentionally do NOT register an afterSwap callback — the per-swap
     // dispatch is wasted gas when the work happens in batched rebalance().
     //
-    // Anyone can call rebalance() when accumulated fees ≥
-    // REBALANCE_THRESHOLD; bots and holders are economically motivated
-    // because rebalance lifts the floor for everyone holding ascend.
+    // rebalance() is permissionless and idempotent (cheap-exits when
+    // there are no fees to collect). Bots and holders are economically
+    // motivated to call it because each rebalance lifts the floor for
+    // every ascend holder.
 
     /// @dev Compute the effective fee in pips for a buy of `amountIn`.
     ///

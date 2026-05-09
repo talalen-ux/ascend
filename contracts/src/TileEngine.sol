@@ -6,12 +6,14 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /// @title  TileEngine — flippable 12×12 reward grid funded by LP fees.
 ///
 /// @notice The unique selling point of ascend. Every swap on the V4 pool
-///         pays 5% fee, of which 1% is forwarded here. That 1% accumulates
-///         into the current 24h epoch's reward pool. At the start of each
-///         epoch, 144 tiles become claimable. Any holder of ≥ 1 ascend
-///         can flip exactly one tile per epoch, revealing a pseudorandom
-///         multiplier ∈ {1, 2, 3, 4} weighted to an expected value of 1.58×,
-///         and receive `(epochPool / 144) × multiplier` ETH.
+///         pays a 1% fee, 30% of which (= 0.3% of swap volume) is
+///         forwarded here at every rebalance. That share accumulates
+///         into the current 24h epoch's reward pool. At the start of
+///         each epoch, 144 tiles become claimable. Any holder of ≥ 1
+///         ascend in the random 68% selection cohort can flip exactly
+///         one tile per epoch, revealing a pseudorandom multiplier
+///         ∈ {1, 2, 3, 4} with E[m] = 1.625, and receive
+///         `(epochPool / 144 / E[m]) × multiplier` ETH.
 ///
 ///         Connection to holdings:
 ///           - MIN_HOLDING gate: must hold ≥ 1 ascend to claim
