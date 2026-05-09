@@ -213,13 +213,12 @@ export default function Whitepaper() {
         </p>
         <p>
           consequently, the hook is the only price-discovery surface and the
-          only liquidity venue. whether a swap originates from the dapp&rsquo;s{" "}
-          <code>AscendRouter</code>, from Uniswap&rsquo;s v4 swap UI, from a
-          1inch or 0x aggregator, or from any other contract that unlocks
-          the PoolManager and calls <code>swap</code>, the same{" "}
-          <code>beforeSwap</code> handler runs, the same delta is returned,
-          and the same price is paid. the price is identical across venues
-          by execution path, not by arbitrage.
+          only liquidity venue. whether a swap originates from the dapp, from
+          Uniswap&rsquo;s v4 swap UI, from a 1inch or 0x aggregator, or from
+          any other contract that unlocks the PoolManager and calls{" "}
+          <code>swap</code>, the same <code>beforeSwap</code> handler runs,
+          the same dynamic fee is applied, and the same price is paid. the
+          price is identical across venues by construction, not by arbitrage.
         </p>
         <p>
           listing on dexscreener and geckoterminal is automatic once their
