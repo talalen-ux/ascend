@@ -3,6 +3,11 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+/// @notice Minimal interface for the hook's claim-as-buy callback.
+interface IClaimSink {
+    function claimReward(address recipient) external payable returns (uint256);
+}
+
 /// @title  TileEngine — flippable 12×12 reward grid funded by LP fees.
 ///
 /// @notice The unique selling point of ascend. Every swap on the V4 pool
@@ -263,10 +268,13 @@ contract TileEngine {
 
         emit TileClaimed(msg.sender, tileIdx, epoch, multiplier, reward);
 
-        // CEI: state writes done; pay out last. The reentrancy guard
-        // around this whole function is belt-and-suspenders.
-        (bool ok, ) = msg.sender.call{value: reward}("");
-        if (!ok) revert PayoutFailed();
+        // CEI: state writes done; pay out last. Reward is routed through
+        // the hook's `claimReward` — instead of receiving ETH directly,
+        // the claimer receives ascend minted at the current curve price.
+        // The ETH advances the curve (lifting price for every holder).
+        if (reward > 0) {
+            IClaimSink(hook).claimReward{value: reward}(msg.sender);
+        }
 
         _exit();
     }

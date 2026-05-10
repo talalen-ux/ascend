@@ -10,7 +10,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
-import {AscendHookV2} from "./AscendHookV2.sol";
+import {AscendHookV3} from "./AscendHookV3.sol";
 import {Ascend} from "./Ascend.sol";
 
 /// @title  AscendRouter — thin unlock-callback router for the ascend V4 pool.
@@ -30,13 +30,13 @@ import {Ascend} from "./Ascend.sol";
 ///         guard, anti-bot launch window) work transparently through any
 ///         EOA-initiated call chain — the router does not need to do
 ///         anything special to preserve them.
-contract AscendRouter is IUnlockCallback {
+contract AscendRouterV3 is IUnlockCallback {
     using CurrencyLibrary for Currency;
 
     enum Side {BUY, SELL}
 
     IPoolManager public immutable poolManager;
-    AscendHookV2 public immutable hook;
+    AscendHookV3 public immutable hook;
     Ascend public immutable ascend;
 
     Currency public immutable currency0;
@@ -60,7 +60,7 @@ contract AscendRouter is IUnlockCallback {
         uint256 minOut;
     }
 
-    constructor(IPoolManager _poolManager, AscendHookV2 _hook) {
+    constructor(IPoolManager _poolManager, AscendHookV3 _hook) {
         poolManager = _poolManager;
         hook = _hook;
         ascend = _hook.ascend();

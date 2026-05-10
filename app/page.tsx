@@ -1,6 +1,8 @@
 import { Hero } from "@/components/Hero";
 import { State } from "@/components/State";
-import { Projection } from "@/components/Projection";
+import { Curve } from "@/components/Curve";
+import { SatoData } from "@/components/SatoData";
+import { Issuance } from "@/components/Issuance";
 import { Trade } from "@/components/Trade";
 import { Mechanism } from "@/components/Mechanism";
 import { VenueRow } from "@/components/VenueRow";
@@ -17,9 +19,13 @@ export default function Page() {
       <VenueRow />
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <Projection />
+        <Curve />
         <Trade />
       </div>
+
+      <SatoData />
+
+      <Issuance />
 
       <Tiles />
 
@@ -30,9 +36,9 @@ export default function Page() {
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-[11px] text-ash sm:mt-20">
         <div className="flex items-center gap-3">
           <Mark size={20} />
-          <span>LP-backed floor · tile rewards from volume · uniswap v4</span>
+          <span>curve-backed floor · tile rewards from volume · uniswap v4</span>
         </div>
-        <span className="font-mono">ascend — v2</span>
+        <span className="font-mono">ascend — v3</span>
       </footer>
     </main>
   );

@@ -100,6 +100,65 @@ export const ASCEND_HOOK_V2_ABI = [
   { type: "function", name: "rebalance", stateMutability: "nonpayable", inputs: [], outputs: [] },
 ] as const;
 
+/// V3 hook ABI — Sato-style bonding curve. Surface the dapp reads.
+export const ASCEND_HOOK_V3_ABI = [
+  { type: "function", name: "ascend", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "tileEngine", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "isInitialized", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
+  { type: "function", name: "currentSupply", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "cumulativeEthIn", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "mintedFair", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "forwardSupply", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "drift", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "reserveEth", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "floor", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "spotPrice", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "tileAccrual", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "K", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "S", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  {
+    type: "function",
+    name: "quoteMint",
+    stateMutability: "view",
+    inputs: [{ type: "uint256", name: "ethIn" }],
+    outputs: [{ type: "uint256", name: "mintAmount" }, { type: "uint256", name: "totalFee" }],
+  },
+  {
+    type: "function",
+    name: "quoteBurn",
+    stateMutability: "view",
+    inputs: [{ type: "uint256", name: "satoIn" }],
+    outputs: [{ type: "uint256", name: "ethOut" }, { type: "uint256", name: "totalFee" }],
+  },
+  { type: "function", name: "sweep", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  {
+    type: "event",
+    name: "Mint",
+    inputs: [
+      { type: "address", name: "sender", indexed: true },
+      { type: "uint256", name: "ethIn" },
+      { type: "uint256", name: "totalFee" },
+      { type: "uint256", name: "tileShare" },
+      { type: "uint256", name: "mintAmount" },
+      { type: "uint256", name: "newEthCum" },
+      { type: "uint256", name: "newSupply" },
+    ],
+  },
+  {
+    type: "event",
+    name: "Burn",
+    inputs: [
+      { type: "address", name: "sender", indexed: true },
+      { type: "uint256", name: "satoIn" },
+      { type: "uint256", name: "totalFee" },
+      { type: "uint256", name: "tileShare" },
+      { type: "uint256", name: "ethOut" },
+      { type: "uint256", name: "newEthCum" },
+      { type: "uint256", name: "newSupply" },
+    ],
+  },
+] as const;
+
 /// TileEngine ABI for the claim flow.
 export const TILE_ENGINE_ABI = [
   { type: "function", name: "currentEpoch", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },

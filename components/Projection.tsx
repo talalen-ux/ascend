@@ -26,7 +26,7 @@ export function Projection() {
   const cfg = SCENARIOS[scenario];
 
   const data = simulateFloor(
-    { reserveEth: state.reserveEth, reserveAscend: state.reserveAscend },
+    { ethCum: state.ethCum, supply: state.supply, reserveEth: state.reserveEth },
     100,
     cfg.buy,
     cfg.sells,

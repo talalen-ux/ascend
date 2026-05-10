@@ -73,7 +73,7 @@ export function State() {
         <Cell
           label="Floor"
           value={`${fmtPrice(floorEth)} Ξ`}
-          hint="redemption guarantee · LP-backed"
+          hint="burn redeems against the curve"
         />
         <Cell
           label="Market cap"
@@ -81,14 +81,14 @@ export function State() {
           hint="price × circulating"
         />
         <Cell
-          label="LP depth"
+          label="Reserve"
           value={`${fmt(reserveEth, 4)} Ξ`}
-          hint="real liquidity, only grows"
+          hint="ETH backing the supply, only grows"
         />
         <Cell
           label="Circulating"
           value={fmt(circulating, 2)}
-          hint="ascend mined out of the LP"
+          hint="ascend minted from the curve"
         />
         <Cell
           label="FDV"
