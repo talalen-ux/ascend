@@ -5,6 +5,8 @@ dist/
 *.log
 .env
 .env.local
+contracts/.env.sepolia
+contracts/.env
 
 # foundry
 contracts/out/
