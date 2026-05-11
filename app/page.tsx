@@ -6,7 +6,6 @@ import { Issuance } from "@/components/Issuance";
 import { Trade } from "@/components/Trade";
 import { Mechanism } from "@/components/Mechanism";
 import { VenueRow } from "@/components/VenueRow";
-import { Holdings } from "@/components/Holdings";
 import { Tiles } from "@/components/Tiles";
 import { RewardChart } from "@/components/RewardChart";
 import { Mark } from "@/components/Mark";
@@ -33,8 +32,6 @@ export default function Page() {
       <RewardChart />
 
       <Tiles />
-
-      <Holdings />
 
       <Mechanism />
 
