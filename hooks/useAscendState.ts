@@ -11,6 +11,9 @@ import {
 import { K as CURVE_K, S as CURVE_S, marginalMintPriceAt, type StateV3 } from "@/lib/floor_v3";
 
 export interface AscendState extends StateV3 {
+  /// Always populated for AscendState (parent type marks it optional for
+  /// transient states like genesis, but the dapp always reads it).
+  mintedFair: number;
   /// ETH per ascend (the burn floor — what one ascend redeems for).
   floorEth: number;
   /// Spot mint price on the curve. ETH per ascend.
@@ -41,6 +44,7 @@ const DEMO_STATE: AscendState = {
   ethCum: 0,
   supply: 0,
   reserveEth: 0,
+  mintedFair: 0,
   floorEth: 0,
   priceEth: CURVE_S / CURVE_K,
   marketCapEth: 0,

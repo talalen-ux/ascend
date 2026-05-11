@@ -15,6 +15,7 @@ import {
   MAX_MINT_PER_TX,
   MINT_FEE_RATE,
   BURN_FEE_RATE,
+  SURPLUS_RATE,
   TILE_FEE_BPS,
   FEE_DENOM,
   curveSupplyAt,
@@ -83,6 +84,7 @@ export function quoteBuy(s: State, ethIn: number) {
     feePips: MINT_FEE_RATE * 1_000_000, // legacy callers expected pips
     tilePortion: q.tilePortion,
     lpRetention: q.reservePortion, // legacy name; v3 calls it reserveShare
+    surplusTake: q.surplusTake,
     floorBefore: q.floorBefore,
     floorAfter: q.floorAfter,
     priceBefore: q.priceBefore,
@@ -93,14 +95,20 @@ export function quoteBuy(s: State, ethIn: number) {
 /**
  * Quote a burn (legacy `quoteSell` name). Returns a result shaped so the
  * existing Trade.tsx can read `ethOut`, `fee`, `floorAfter`, `priceAfter`.
+ * `holdAgeBlocks` defaults to 0 (tier-1, 90% payout) — the conservative
+ * fresh-mint case the UI already discloses.
  */
-export function quoteSell(s: State, ascendIn: number) {
-  const q = quoteBurnV3(s, ascendIn);
+export function quoteSell(s: State, ascendIn: number, holdAgeBlocks: number = 0) {
+  const q = quoteBurnV3(s, ascendIn, holdAgeBlocks);
   if (!q) return null;
   return {
     ethOut: q.ethOut,
     fee: q.fee,
     tilePortion: q.tilePortion,
+    tokenBurnFee: q.tokenBurnFee,
+    penalty: q.penalty,
+    bonus: q.bonus,
+    payoutMultBps: q.payoutMultBps,
     floorBefore: q.floorBefore,
     floorAfter: q.floorAfter,
     priceBefore: q.priceBefore,
@@ -126,23 +134,29 @@ export function simulateFloor(
   for (let i = 1; i <= steps; i++) {
     if (i % 2 === 1) {
       // mint
-      const q = quoteMintV3(s, Math.min(tradeEthBuy, MAX_MINT_PER_TX));
+      const ethIn = Math.min(tradeEthBuy, MAX_MINT_PER_TX);
+      const q = quoteMintV3(s, ethIn);
       if (q) {
+        const postFee = ethIn * (1 - MINT_FEE_RATE);
+        const ethToCurve = postFee * (1 - SURPLUS_RATE);
         s = {
-          ethCum: s.ethCum + (tradeEthBuy * (1 - MINT_FEE_RATE)),
+          ethCum: s.ethCum + ethToCurve,
           supply: s.supply + q.ascendOut,
-          reserveEth: s.reserveEth + tradeEthBuy - q.tilePortion,
+          reserveEth: s.reserveEth + ethIn - q.tilePortion,
+          mintedFair: (s.mintedFair ?? curveSupplyAt(s.ethCum)) + q.ascendOut,
         };
       }
     } else if (s.supply > 0) {
-      // burn a small fraction so the simulation can keep running
+      // burn a small fraction so the simulation can keep running. mintedFair
+      // is FROZEN on burn (Sato-style) — only supply shrinks.
       const burnAmount = s.supply * sellFraction * 0.01;
       const q = quoteBurnV3(s, burnAmount);
       if (q) {
         s = {
-          ethCum: Math.max(0, s.ethCum - q.ethOut / (1 - BURN_FEE_RATE)),
+          ethCum: s.ethCum,                       // frozen on burn
           supply: s.supply - burnAmount,
           reserveEth: s.reserveEth - q.ethOut - q.tilePortion,
+          mintedFair: s.mintedFair ?? curveSupplyAt(s.ethCum),
         };
       }
     }

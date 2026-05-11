@@ -33,6 +33,7 @@ export function Trade() {
         ? {
             received: q.ascendOut,
             fee: q.fee,
+            surplusTake: q.surplusTake,
             floorAfter: q.floorAfter,
             priceAfter: q.priceAfter,
           }
@@ -43,6 +44,10 @@ export function Trade() {
       ? {
           received: q.ethOut,
           fee: q.fee,
+          tokenBurnFee: q.tokenBurnFee,
+          penalty: q.penalty,
+          bonus: q.bonus,
+          payoutMultBps: q.payoutMultBps,
           floorAfter: q.floorAfter,
           priceAfter: q.priceAfter,
         }
@@ -116,8 +121,8 @@ export function Trade() {
         />
         {isBuy && (
           <Row
-            label="Surplus take (3%)"
-            value={Number(amount || "0") * 0.03}
+            label="Surplus take (3% post-fee)"
+            value={isBuy ? (quote && "surplusTake" in quote ? quote.surplusTake ?? 0 : 0) : 0}
             suffix="Ξ → reserve"
             muted
             small
@@ -127,7 +132,11 @@ export function Trade() {
           <>
             <Row
               label="Token burn fee (1%)"
-              value={Number(amount || "0") * 0.01}
+              value={
+                quote && "tokenBurnFee" in quote
+                  ? quote.tokenBurnFee ?? 0
+                  : Number(amount || "0") * 0.01
+              }
               suffix="ascend"
               muted
               small
@@ -135,8 +144,17 @@ export function Trade() {
             <div className="flex items-baseline justify-between text-[11px]">
               <span className="text-ash">Block-age penalty</span>
               <span className="text-bone">
-                tier-1 (90% payout, 10% penalty){" "}
-                <span className="text-ash">— 0–10 blk since your last mint</span>
+                {(() => {
+                  const m = quote && "payoutMultBps" in quote ? quote.payoutMultBps : undefined;
+                  const pct = m !== undefined ? (m / 100).toFixed(0) : "90";
+                  const pen = m !== undefined ? ((10000 - m) / 100).toFixed(0) : "10";
+                  return (
+                    <>
+                      tier-1 ({pct}% payout, {pen}% penalty){" "}
+                      <span className="text-ash">— 0–10 blk since last receive</span>
+                    </>
+                  );
+                })()}
               </span>
             </div>
             {state.bonusBps > 0 && (

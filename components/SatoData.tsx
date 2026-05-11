@@ -6,9 +6,9 @@ import { useActivity } from "@/hooks/useActivity";
 import {
   K,
   USD_PER_ETH,
-  BURN_FEE_RATE,
   ethToUsd,
   marginalMintPriceAt,
+  livePerTokenBurnAt,
 } from "@/lib/floor_v3";
 
 const C = {
@@ -73,15 +73,11 @@ export function SatoData() {
   const act = useActivity();
 
   const priceMint = marginalMintPriceAt(state.ethCum);
-  // Per-token burn floor (Sato monotone). Computed from on-chain state.
-  const supplyForBurn = state.supply > 0 ? state.supply : 1;
-  const mF = state.mintedFair > 0 ? state.mintedFair : 0;
-  const priceBurn =
-    mF > 0 && mF < K ? (0.3 / (K - mF)) * (mF / supplyForBurn) * (1 - BURN_FEE_RATE) : 0;
-  // Note: we use S=0.3 inline above so the import doesn't need updating per S.
-  // It would be cleaner to import S, but since useAscendState already exposes
-  // floorEth (the on-chain value), let's prefer that:
-  const priceBurnEth = state.floorEth > 0 ? state.floorEth : priceBurn;
+  // Sato monotone floor — conceptual long-term anchor. Read from chain.
+  const priceFloorEth = state.floorEth;
+  // Live burn payout per ascend at tier-1 (90% payout, fresh wallet) —
+  // includes 1% token fee, 0.7% protocol fee, block-age penalty, bonus.
+  const priceLiveBurnEth = livePerTokenBurnAt(state);
 
   const fdvEth = priceMint * K;
   const circMcapEth = priceMint * state.supply;
@@ -125,16 +121,25 @@ export function SatoData() {
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Price
           </h3>
-          <Cell label="market" value={fmtUsd(priceMint)} valueClass="text-bone" />
-          <Cell label="burn" value={fmtUsd(priceBurnEth)} />
-          <Cell label="mint" value={fmtUsd(priceMint)} />
+          <Cell label="mint" value={fmtUsd(priceMint)} valueClass="text-bone" />
           <Cell
-            label="spread"
+            label="live burn"
+            value={fmtUsd(priceLiveBurnEth)}
+            sub="tier-1, after fees + penalty"
+          />
+          <Cell
+            label="floor (mono)"
+            value={fmtUsd(priceFloorEth)}
+            sub="lifetime min if held"
+          />
+          <Cell
+            label="exit cost"
             value={
               priceMint > 0
-                ? `${(((priceMint - priceBurnEth) / priceMint) * 100).toFixed(2)}%`
+                ? `${(((priceMint - priceLiveBurnEth) / priceMint) * 100).toFixed(2)}%`
                 : "—"
             }
+            sub="round-trip mint→burn loss"
           />
         </div>
 

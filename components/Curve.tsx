@@ -21,6 +21,7 @@ import {
   BURN_FEE_RATE,
   ethToUsd,
   marginalMintPriceAt,
+  livePerTokenBurnAt,
 } from "@/lib/floor_v3";
 
 /// Adaptive: if the live cursor sits past 60% of the default range,
@@ -106,16 +107,22 @@ export function Curve() {
   const ethCum = state.ethCum;
   const supplyActual = state.supply;
   const supplyFair = state.mintedFair > 0 ? state.mintedFair : K * (1 - Math.exp(-ethCum / S));
-  // Drift here is "fair − actual": positive after burns (mintedFair frozen,
-  // currentSupply shrunk). Sato calls this `mintedFair − totalSupply`.
-  const drift = Math.max(0, supplyFair - supplyActual);
+  // mintedFair − currentSupply: how much has been burned cumulatively.
+  // Not to be confused with on-chain `drift()`, which is the PRBMath
+  // rounding gap between the curve formula and stored mintedFair.
+  const burned = Math.max(0, supplyFair - supplyActual);
 
   const priceMint = marginalMintPriceAt(ethCum);
-  // Sato per-token burn floor: (S/(K−mF)) · (mF/supply) · (1−fee)
-  const priceBurn =
+  // Sato monotone floor: (S/(K−mF)) · (mF/supply) · (1−fee). Conceptual
+  // long-term anchor — equals per-token average if all supply were
+  // liquidated at the frozen mintedFair. Only ever rises.
+  const priceFloor =
     supplyFair > 0 && supplyFair < K && supplyActual > 0
       ? (S / (K - supplyFair)) * (supplyFair / supplyActual) * (1 - BURN_FEE_RATE)
       : 0;
+  // Live burn payout per ascend: what a small burn RIGHT NOW pays after
+  // 1% token fee + 0.7% protocol fee + tier-1 90% block-age penalty.
+  const priceLiveBurn = livePerTokenBurnAt(state);
 
   // Y-axis bounds. Cap price domain so the curve fits visually.
   const priceMaxOnScreen = data[data.length - 1].price;
@@ -156,11 +163,11 @@ export function Curve() {
             supply{" "}
             <span style={{ color: COLORS.supply }}>{fmtSupply(supplyActual)}</span>{" "}
             of <span className="text-bone">{fmtSupply(K, 0)}</span>
-            {Math.abs(drift) > 1 && (
+            {burned > 1 && (
               <>
                 {" "}
                 <span className="text-ash">
-                  (drift <span style={{ color: COLORS.burn }}>{fmtSupply(Math.abs(drift))}</span>)
+                  (burned <span style={{ color: COLORS.burn }}>{fmtSupply(burned)}</span>)
                 </span>
               </>
             )}
@@ -174,9 +181,11 @@ export function Curve() {
             className="rounded-md border px-2 py-1"
             style={{ borderColor: COLORS.edge }}
           >
-            burn <span style={{ color: COLORS.burn }}>{fmtUsd(priceBurn)}</span>
-            {" "}/{" "}
             mint <span style={{ color: COLORS.supply }}>{fmtUsd(priceMint)}</span>
+            {" "}/{" "}
+            live burn <span style={{ color: COLORS.burn }}>{fmtUsd(priceLiveBurn)}</span>
+            {" "}/{" "}
+            floor <span className="text-bone/80">{fmtUsd(priceFloor)}</span>
           </span>
         </div>
       </header>
@@ -294,7 +303,7 @@ export function Curve() {
               isFront
             />
 
-            {/* Filled dot: actual on-chain supply (= fair in v3 since no drift). */}
+            {/* Filled dot: actual on-chain currentSupply (= mintedFair − burned). */}
             <ReferenceDot
               x={ethCum}
               y={supplyActual}
@@ -305,10 +314,10 @@ export function Curve() {
               isFront
             />
 
-            {/* Burn quote on the price line — what one ascend redeems for now. */}
+            {/* Live burn payout per ascend (tier-1, after all fees + penalty). */}
             <ReferenceDot
               x={ethCum}
-              y={priceBurn}
+              y={priceLiveBurn}
               yAxisId="price"
               r={4}
               fill={COLORS.burn}

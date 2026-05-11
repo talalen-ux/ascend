@@ -109,9 +109,6 @@ export function Mechanism() {
             />
             <h3 className="relative text-[15px] font-medium text-bone">{p.title}</h3>
             <p className="relative mt-2 text-[13px] leading-relaxed text-ash">{p.body}</p>
-            <p className="relative mt-3 font-mono text-[11px] uppercase tracking-widest2 text-accent">
-              {p.kicker}
-            </p>
           </motion.div>
         ))}
       </motion.div>
