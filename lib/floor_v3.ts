@@ -37,13 +37,27 @@ export const BURN_FEE_RATE = BURN_FEE_BPS / FEE_DENOM;   // 0.007
 export const SURPLUS_RATE = SURPLUS_BPS / FEE_DENOM;     // 0.03
 export const BURN_TOKEN_FEE_RATE = BURN_TOKEN_FEE_BPS / FEE_DENOM; // 0.01
 
-/// Block-age burn penalty tiers — must match AscendHookV3.sol exactly.
-/// payoutBps applies to the post-fee gross before any reserve bonus.
-export const PENALTY_TIERS = [
-  { maxBlocks: 10,    payoutBps: 9000 }, // tier 1: 90%
-  { maxBlocks: 100,   payoutBps: 9500 }, // tier 2: 95%
-  { maxBlocks: 1000,  payoutBps: 9900 }, // tier 3: 99%
-  { maxBlocks: Infinity, payoutBps: 10000 }, // tier 4: full
+/// Block-age burn penalty constants — must match AscendHookV3.sol.
+/// Smooth exponential decay (no anchor points / no piecewise math):
+///     payout(b) = FLOOR + (CEIL − FLOOR) · (1 − e^(−b/TAU))
+export const PENALTY_FLOOR_BPS = 9000;     // 90% at block 0
+export const PENALTY_CEIL_BPS = 10000;     // 100% asymptote
+export const PENALTY_TAU_BLOCKS = 100;     // decay constant (blocks)
+export const PENALTY_CAP_BLOCKS = 1000;    // hard cap past this for gas
+
+/// Convenience: a few computed milestones for chart annotations.
+/// Solve b = −TAU · ln(1 − (target − FLOOR) / (CEIL − FLOOR)).
+function blocksAt(payoutBps: number): number {
+  const span = PENALTY_CEIL_BPS - PENALTY_FLOOR_BPS;
+  const t = (payoutBps - PENALTY_FLOOR_BPS) / span;
+  if (t <= 0) return 0;
+  if (t >= 1) return PENALTY_CAP_BLOCKS;
+  return Math.round(-PENALTY_TAU_BLOCKS * Math.log(1 - t));
+}
+export const PENALTY_MILESTONES = [
+  { payoutBps: 9500, blocks: blocksAt(9500) },  // 95% at ~69 blocks
+  { payoutBps: 9900, blocks: blocksAt(9900) },  // 99% at ~461 blocks
+  { payoutBps: 9990, blocks: blocksAt(9990) },  // 99.9% at ~691 blocks
 ] as const;
 
 export interface StateV3 {
@@ -180,13 +194,14 @@ export function quoteMintV3(s: StateV3, ethIn: number) {
   };
 }
 
-/// Penalty multiplier (in bps) for a given hold age in blocks. Mirrors
-/// AscendHookV3._penaltyMultBps.
+/// Penalty multiplier (in bps) for a given hold age. Mirrors the on-chain
+/// `_penaltyMultBps` exactly — smooth exponential decay, no piecewise math.
 export function penaltyMultBps(holdAgeBlocks: number): number {
-  for (const tier of PENALTY_TIERS) {
-    if (holdAgeBlocks < tier.maxBlocks) return tier.payoutBps;
-  }
-  return 10_000;
+  if (holdAgeBlocks >= PENALTY_CAP_BLOCKS) return PENALTY_CEIL_BPS;
+  if (holdAgeBlocks <= 0) return PENALTY_FLOOR_BPS;
+  const factor = 1 - Math.exp(-holdAgeBlocks / PENALTY_TAU_BLOCKS);
+  const span = PENALTY_CEIL_BPS - PENALTY_FLOOR_BPS;
+  return PENALTY_FLOOR_BPS + Math.floor(span * factor);
 }
 
 /**

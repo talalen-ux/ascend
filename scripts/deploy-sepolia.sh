@@ -38,4 +38,4 @@ SCRIPT="${DEPLOY_SCRIPT:-script/DeployV3.s.sol:DeployV3}"
 forge script "$SCRIPT" \
     --rpc-url "$SEPOLIA_RPC_URL" \
     --broadcast \
-    "${VERIFY_ARGS[@]}"
+    ${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}

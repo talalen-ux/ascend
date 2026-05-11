@@ -9,6 +9,7 @@ import {
   CHAIN_ID,
   isConfigured,
 } from "@/lib/config";
+import { curveSupplyAt } from "@/lib/floor_v3";
 
 /// Sepolia: ~12s blocks → 24h ≈ 7,200 blocks.
 const BLOCKS_PER_DAY = 7_200;
@@ -23,6 +24,20 @@ const BURN_EVENT = parseAbiItem(
 const TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)"
 );
+
+export interface BurnHistoryPoint {
+  /// Block number of the event.
+  block: number;
+  /// Cumulative ETH routed to the curve at this point. Frozen on burns,
+  /// only grows on mints — same X axis as the bonding curve.
+  ethCum: number;
+  /// Currently circulating supply at this point (= ERC-20 totalSupply).
+  supply: number;
+  /// Curve-implied mintedFair at this point (computed from newEthCum).
+  mintedFair: number;
+  /// Cumulative burned % = (mintedFair − supply) / mintedFair · 100.
+  burnedPct: number;
+}
 
 export interface Activity {
   /// Window over which the stats are computed (in blocks).
@@ -44,6 +59,10 @@ export interface Activity {
   /// Burnt-fees-equivalent: cumulative reserve-side fee retained over all time
   /// (computed from total mint+burn fees minus tile share).
   burntFeesEth: number;
+  /// Time series of supply state at each mint/burn event in the window.
+  /// Sorted by block ascending. Used to render the cumulative burn %
+  /// chart. Empty when there are no events in the window.
+  burnHistory: BurnHistoryPoint[];
   isLoading: boolean;
 }
 
@@ -57,6 +76,7 @@ const EMPTY: Activity = {
   burnFlowAscend: 0,
   holders: 0,
   burntFeesEth: 0,
+  burnHistory: [],
   isLoading: false,
 };
 
@@ -137,6 +157,46 @@ async function fetchActivity(client: PublicClient): Promise<Activity> {
     if (bal > 0n) holders++;
   }
 
+  // Merge mint + burn events into a single timeline. Each event carries
+  // newSupply (currentSupply after the event) and newEthCum (cumulative
+  // ETH routed to the curve). We derive mintedFair from the closed-form
+  // q(newEthCum); the on-chain stepwise value diverges only by PRBMath
+  // rounding (negligible). Burned % = (mF − supply) / mF · 100.
+  const events: {
+    block: bigint;
+    supply: bigint;
+    ethCum: bigint;
+  }[] = [];
+  for (const log of mintLogs) {
+    events.push({
+      block: log.blockNumber ?? 0n,
+      supply: log.args.newSupply ?? 0n,
+      ethCum: log.args.newEthCum ?? 0n,
+    });
+  }
+  for (const log of burnLogs) {
+    events.push({
+      block: log.blockNumber ?? 0n,
+      supply: log.args.newSupply ?? 0n,
+      ethCum: log.args.newEthCum ?? 0n,
+    });
+  }
+  events.sort((a, b) => Number(a.block - b.block));
+
+  const burnHistory: BurnHistoryPoint[] = events.map((e) => {
+    const ethCum = Number(formatEther(e.ethCum));
+    const supply = Number(formatEther(e.supply));
+    const mintedFair = curveSupplyAt(ethCum);
+    const burnedPct = mintedFair > 0 ? ((mintedFair - supply) / mintedFair) * 100 : 0;
+    return {
+      block: Number(e.block),
+      ethCum,
+      supply,
+      mintedFair,
+      burnedPct: Math.max(0, burnedPct),
+    };
+  });
+
   return {
     windowBlocks: BLOCKS_PER_DAY,
     txns24h: mintLogs.length + burnLogs.length,
@@ -147,6 +207,7 @@ async function fetchActivity(client: PublicClient): Promise<Activity> {
     burnFlowAscend: Number(formatEther(burnFlow)),
     holders,
     burntFeesEth,
+    burnHistory,
     isLoading: false,
   };
 }

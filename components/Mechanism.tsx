@@ -16,7 +16,7 @@ const properties = [
   {
     title: "Block-age burn penalty",
     body:
-      "burning within 10 blocks of your last mint pays 90% of the curve return. 10–100 blocks: 95%. 100–1000: 99%. 1000+ blocks: full payout. tracked per-holder via a weighted-average receive block, so routing tokens through a fresh wallet doesn't dodge it. flippers literally fund diamond hands.",
+      "burning at block 0 pays 90% of the curve return. payout smoothly ramps up — 95% at 10 blocks, 99% at 50, 100% past 500 (~1.7 hrs at 12s blocks) — every additional block aged moves your payout up a fixed amount. tracked per-holder via a weighted-average receive block, so routing tokens through a fresh wallet doesn't dodge it. flippers literally fund diamond hands.",
   },
   {
     title: "Reserve-aware bonus",

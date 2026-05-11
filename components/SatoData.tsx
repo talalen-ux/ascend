@@ -125,7 +125,7 @@ export function SatoData() {
           <Cell
             label="live burn"
             value={fmtUsd(priceLiveBurnEth, ethUsd)}
-            sub="tier-1, after fees + penalty"
+            sub="fresh wallet · after fees + max penalty"
           />
           <Cell
             label="floor (mono)"
@@ -204,7 +204,7 @@ export function SatoData() {
           <Cell
             label="model"
             value="Sato + 3% surplus"
-            sub="penalty: 0–10/100/1000 blk"
+            sub="smooth penalty 0–500 blk"
           />
         </div>
 

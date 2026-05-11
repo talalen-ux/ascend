@@ -293,9 +293,14 @@ contract AscendHookV3Test is Test, Deployers {
         vm.prank(carol, carol);
         ascend.approve(address(router), minted);
 
-        // Sanity: carol's penalty multiplier at age 0 is tier-1.
-        assertEq(hook.penaltyMultBps(0), 9000);
-        assertEq(hook.penaltyMultBps(1), 9000);
+        // Sanity: carol's penalty multiplier at age 0 is max (90% payout).
+        // Smooth interpolation means age 1 already pays slightly more —
+        // assert it sits in the tier-1 segment (≤95%) and grows monotonically.
+        uint256 m0 = hook.penaltyMultBps(0);
+        uint256 m1 = hook.penaltyMultBps(1);
+        assertEq(m0, 9000, "age 0 payout != 90%");
+        assertGe(m1, m0, "penalty not monotone");
+        assertLe(m1, 9500, "age 1 over tier-1 ceiling");
 
         uint256 ethBefore = carol.balance;
         vm.prank(carol, carol);

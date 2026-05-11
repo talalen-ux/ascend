@@ -92,16 +92,17 @@ contract AscendHookV3 is BaseHook {
     ///         without ETH out). Compounds the (mF/supply) ratio.
     uint256 public constant BURN_TOKEN_FEE_BPS = 100;
 
-    // ----- block-age burn penalty (continuous-tier) -----------------
+    // ----- block-age burn penalty (smooth exponential decay) --------
     /// Penalty applied to burn payout based on blocks since the
-    /// burner's last mint. Stolen amount is recycled into surplusReserve.
-    uint256 public constant PENALTY_TIER1_BLOCKS = 10;     // 0–10
-    uint256 public constant PENALTY_TIER1_BPS    = 9000;   // 90% payout
-    uint256 public constant PENALTY_TIER2_BLOCKS = 100;    // 10–100
-    uint256 public constant PENALTY_TIER2_BPS    = 9500;   // 95%
-    uint256 public constant PENALTY_TIER3_BLOCKS = 1000;   // 100–1000
-    uint256 public constant PENALTY_TIER3_BPS    = 9900;   // 99%
-    uint256 public constant PENALTY_TIER4_BPS    = 10000;  // 1000+: full payout
+    /// burner's last receive. Stolen amount is recycled into surplusReserve.
+    /// Smooth exponential decay:
+    ///     payout(b) = FLOOR + (CEIL − FLOOR) · (1 − e^(−b/TAU))
+    /// where TAU is the decay constant (in blocks). Past CAP_BLOCKS the
+    /// value is so close to CEIL that we hard-code it to save the exp call.
+    uint256 public constant PENALTY_FLOOR_BPS  = 9000;   // 90% at block 0
+    uint256 public constant PENALTY_CEIL_BPS   = 10000;  // 100% asymptote
+    uint256 public constant PENALTY_TAU_BLOCKS = 100;    // decay constant
+    uint256 public constant PENALTY_CAP_BLOCKS = 1000;   // past this, return CEIL
 
     // ----- reserve-aware burn bonus ---------------------------------
     /// When `surplusReserve / cumulativeEthIn` exceeds the trigger,
@@ -708,14 +709,26 @@ contract AscendHookV3 is BaseHook {
     // economic-policy helpers
     // -----------------------------------------------------------------
 
-    /// @dev Block-age burn penalty multiplier in BPS. Younger holds get
-    ///      smaller payouts; tokens 1000+ blocks old burn at 100% (no
-    ///      penalty). The "stolen" portion gets recycled into surplusReserve.
+    /// @dev Block-age burn penalty multiplier in BPS. Smooth exponential
+    ///      decay — every additional block aged moves the payout up by a
+    ///      continuously decreasing amount. No corners, no cliffs. The
+    ///      "stolen" portion gets recycled into surplusReserve.
+    ///
+    ///         payout(b) = FLOOR + (CEIL − FLOOR) · (1 − e^(−b/TAU))
+    ///
+    ///      Past CAP_BLOCKS the exponential is within rounding of zero
+    ///      (e^(−10) ≈ 4.5e-5, so payout ≈ CEIL − 0.045 bps); short-circuit
+    ///      to CEIL to skip the exp call and save gas on long holds.
     function _penaltyMultBps(uint256 blocksHeld) internal pure returns (uint256) {
-        if (blocksHeld < PENALTY_TIER1_BLOCKS) return PENALTY_TIER1_BPS;
-        if (blocksHeld < PENALTY_TIER2_BLOCKS) return PENALTY_TIER2_BPS;
-        if (blocksHeld < PENALTY_TIER3_BLOCKS) return PENALTY_TIER3_BPS;
-        return PENALTY_TIER4_BPS;
+        if (blocksHeld >= PENALTY_CAP_BLOCKS) return PENALTY_CEIL_BPS;
+        if (blocksHeld == 0) return PENALTY_FLOOR_BPS;
+        // factor = 1 − 1/e^(blocks/TAU). UD60x18 fixed-point.
+        UD60x18 ratio = div(ud(blocksHeld * 1e18), ud(PENALTY_TAU_BLOCKS * 1e18));
+        UD60x18 invExp = div(UNIT, exp(ratio));
+        UD60x18 factor = sub(UNIT, invExp);
+        uint256 span = PENALTY_CEIL_BPS - PENALTY_FLOOR_BPS;
+        uint256 reduction = (span * intoUint256(factor)) / 1e18;
+        return PENALTY_FLOOR_BPS + reduction;
     }
 
     /// @dev Reserve-aware burn bonus, in BPS. Activates when surplus

@@ -78,7 +78,7 @@ export function State() {
           label="Live burn"
           value={fmtUsd(liveBurnEth, ethUsd)}
           sub={fmtEthShort(liveBurnEth)}
-          hint="payout per ascend, tier-1, after fees"
+          hint="payout per ascend, fresh wallet, after fees"
         />
         <Cell
           label="Floor (mono)"

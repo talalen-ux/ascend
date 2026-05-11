@@ -8,6 +8,7 @@ import { useAscendState } from "@/hooks/useAscendState";
 import { useTrade, type Side } from "@/hooks/useTrade";
 import { useEthPrice } from "@/hooks/useEthPrice";
 import { quoteBuy, quoteSell } from "@/lib/floor";
+import { MAX_MINT_PER_TX } from "@/lib/floor_v3";
 import { fmtUsd, fmtEthShort } from "@/lib/fmtUsd";
 
 export function Trade() {
@@ -96,6 +97,17 @@ export function Trade() {
           />
           <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "ascend"}</span>
         </div>
+        {/* Anti-vacuum cap warning. The contract reverts above MAX_MINT_PER_TX
+            so we surface the limit instead of silently quoting zero. */}
+        {isBuy && Number(amount) > MAX_MINT_PER_TX && (
+          <div className="mt-2 flex items-baseline gap-2 text-[11px] text-accent2">
+            <span>⚠</span>
+            <span>
+              max <span className="font-mono">{MAX_MINT_PER_TX} Ξ</span> per mint
+              <span className="text-ash"> · split across multiple txs to mint more</span>
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="hairline my-7" />
@@ -167,12 +179,12 @@ export function Trade() {
               <span className="text-bone">
                 {(() => {
                   const m = quote && "payoutMultBps" in quote ? quote.payoutMultBps : undefined;
-                  const pct = m !== undefined ? (m / 100).toFixed(0) : "90";
-                  const pen = m !== undefined ? ((10000 - m) / 100).toFixed(0) : "10";
+                  const pct = m !== undefined ? (m / 100).toFixed(2) : "90";
+                  const pen = m !== undefined ? ((10000 - m) / 100).toFixed(2) : "10";
                   return (
                     <>
-                      tier-1 ({pct}% payout, {pen}% penalty){" "}
-                      <span className="text-ash">— 0–10 blk since last receive</span>
+                      {pct}% payout, {pen}% penalty{" "}
+                      <span className="text-ash">— smooth ramp 0→500 blk</span>
                     </>
                   );
                 })()}
@@ -221,6 +233,8 @@ export function Trade() {
           ? "Connect wallet"
           : needsApproval
           ? "Approve ascend → router"
+          : isBuy && Number(amount) > MAX_MINT_PER_TX
+          ? `Over ${MAX_MINT_PER_TX} Ξ cap`
           : side === "buy"
           ? "Mine ascend"
           : "Redeem ascend"}
@@ -240,7 +254,7 @@ export function Trade() {
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
           ? "mint new ascend against the bonding curve. 0.7% fee + 3% surplus take. surplus accumulates as overcollateralization that pays bonus on long-hold burns. no LP, no pre-mint, no admin path."
-          : "redeem ascend through the inverse curve. 0.7% protocol fee + 1% token-side burn + block-age penalty (90% payout 0–10 blk, 95% 10–100, 99% 100–1000, 100% past 1000). penalties go to surplus reserve, which pays a bonus once over-collateralization tops 10%. patient holders are subsidized by impatient flippers."}
+          : "redeem ascend through the inverse curve. 0.7% protocol fee + 1% token-side burn + smooth block-age penalty that ramps from 10% (block 0) down to 0% (block 500, ~1.7 hrs at 12s blocks). penalties go to surplus reserve, which pays a bonus once over-collateralization tops 10%. patient holders are subsidized by impatient flippers."}
       </p>
     </section>
   );
