@@ -6,10 +6,13 @@ import clsx from "clsx";
 import { parseEther } from "viem";
 import { useAscendState } from "@/hooks/useAscendState";
 import { useTrade, type Side } from "@/hooks/useTrade";
+import { useEthPrice } from "@/hooks/useEthPrice";
 import { quoteBuy, quoteSell } from "@/lib/floor";
+import { fmtUsd, fmtEthShort } from "@/lib/fmtUsd";
 
 export function Trade() {
   const state = useAscendState();
+  const ethUsd = useEthPrice();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("0.1");
   const { execute, approve, pending, error, ready, isSuccess, allowance, wrongChain } = useTrade();
@@ -98,34 +101,52 @@ export function Trade() {
       <div className="hairline my-7" />
 
       <div className="space-y-3 font-mono text-[13px]">
-        <Row
-          label="You receive"
-          value={quote?.received ?? 0}
-          suffix={isBuy ? "ascend" : "Ξ"}
-          accent
-          big
-        />
+        {/* Sell side renders the ETH "you receive" in USD-primary. Buy side
+            keeps the ascend token count as-is. */}
+        {isBuy ? (
+          <Row
+            label="You receive"
+            value={quote?.received ?? 0}
+            suffix="ascend"
+            accent
+            big
+          />
+        ) : (
+          <Row
+            label="You receive"
+            value={quote?.received ?? 0}
+            accent
+            big
+            usd
+            rate={ethUsd}
+          />
+        )}
         <Row
           label={isBuy ? "Trading price" : "Floor"}
           value={isBuy ? state.priceEth : state.floorEth}
-          suffix="Ξ / ascend"
+          suffix="/ ascend"
           muted
           small
+          usd
+          rate={ethUsd}
         />
         <Row
           label={isBuy ? "Mint fee (0.7%)" : "Burn fee (0.7%)"}
           value={quote?.fee ?? 0}
-          suffix="Ξ"
           muted
           small
+          usd
+          rate={ethUsd}
         />
         {isBuy && (
           <Row
             label="Surplus take (3% post-fee)"
             value={isBuy ? (quote && "surplusTake" in quote ? quote.surplusTake ?? 0 : 0) : 0}
-            suffix="Ξ → reserve"
+            suffix="→ reserve"
             muted
             small
+            usd
+            rate={ethUsd}
           />
         )}
         {!isBuy && (
@@ -168,9 +189,11 @@ export function Trade() {
         <Row
           label="Floor after"
           value={quote?.floorAfter ?? state.floorEth}
-          suffix="Ξ / ascend"
+          suffix="/ ascend"
           muted
           small
+          usd
+          rate={ethUsd}
         />
       </div>
 
@@ -231,6 +254,10 @@ function Row({
   muted,
   big,
   small,
+  /// Treat `value` as ETH and render USD-primary with Ξ underneath.
+  /// Requires `rate` (ETH→USD).
+  usd,
+  rate,
 }: {
   label: string;
   value: number;
@@ -239,6 +266,8 @@ function Row({
   muted?: boolean;
   big?: boolean;
   small?: boolean;
+  usd?: boolean;
+  rate?: number;
 }) {
   return (
     <div className="flex items-baseline justify-between">
@@ -249,19 +278,31 @@ function Row({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
         className={clsx(
-          "tabular",
+          "tabular text-right",
           accent && "text-accent",
           muted && "text-bone/80",
           big && "text-[18px]",
           small && "text-[12px]",
         )}
       >
-        {Number.isFinite(value)
-          ? value < 1e-4 && value > 0
-            ? value.toExponential(3)
-            : value.toLocaleString(undefined, { maximumFractionDigits: 6 })
-          : "—"}
-        {suffix ? ` ${suffix}` : ""}
+        {usd && rate ? (
+          <span className="inline-flex flex-col items-end leading-tight">
+            <span>
+              {fmtUsd(value, rate)}
+              {suffix ? ` ${suffix}` : ""}
+            </span>
+            <span className="text-[10px] text-ash/80">{fmtEthShort(value)}</span>
+          </span>
+        ) : (
+          <>
+            {Number.isFinite(value)
+              ? value < 1e-4 && value > 0
+                ? value.toExponential(3)
+                : value.toLocaleString(undefined, { maximumFractionDigits: 6 })
+              : "—"}
+            {suffix ? ` ${suffix}` : ""}
+          </>
+        )}
       </motion.span>
     </div>
   );

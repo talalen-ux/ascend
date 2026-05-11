@@ -17,12 +17,11 @@ import { useAscendState } from "@/hooks/useAscendState";
 import {
   K,
   S,
-  USD_PER_ETH,
   BURN_FEE_RATE,
-  ethToUsd,
   marginalMintPriceAt,
   livePerTokenBurnAt,
 } from "@/lib/floor_v3";
+import { useEthPrice } from "@/hooks/useEthPrice";
 
 /// Adaptive: if the live cursor sits past 60% of the default range,
 /// stretch the chart so it lands around the 50% mark.
@@ -68,11 +67,11 @@ function fmtPriceEth(eth: number): string {
   return eth.toFixed(3);
 }
 
-function fmtUsd(eth: number): string {
+// Burn vs mint differ by exactly 0.7% — at small magnitudes the two
+// collide visually unless we keep enough precision to show the gap.
+function fmtUsd(eth: number, rate: number): string {
   if (!Number.isFinite(eth) || eth <= 0) return "$0";
-  const usd = ethToUsd(eth);
-  // Burn vs mint differ by exactly 0.7% — at small magnitudes the two
-  // collide visually unless we keep enough precision to show the gap.
+  const usd = eth * rate;
   if (usd < 1e-5) return "$" + usd.toExponential(3);
   if (usd < 1e-3) return "$" + usd.toFixed(7);
   if (usd < 0.01) return "$" + usd.toFixed(6);
@@ -91,6 +90,7 @@ function fmtEth(n: number): string {
 
 export function Curve() {
   const state = useAscendState();
+  const ethUsd = useEthPrice();
 
   const E_MAX = adaptiveEMax(state.ethCum);
   const X_TICKS = buildXTicks(E_MAX);
@@ -111,6 +111,13 @@ export function Curve() {
   // Not to be confused with on-chain `drift()`, which is the PRBMath
   // rounding gap between the curve formula and stored mintedFair.
   const burned = Math.max(0, supplyFair - supplyActual);
+  // Sato-style chart convention: place the "circulating" dot at the
+  // cumEth that maps to current supply via the curve formula. Both dots
+  // then sit on the curve and the horizontal gap visualizes the burned
+  // position in cumEth-equivalent units.
+  //     e_eq = −S · ln(1 − supply/K)
+  const supplyEquivE =
+    supplyActual > 0 && supplyActual < K ? -S * Math.log(1 - supplyActual / K) : 0;
 
   const priceMint = marginalMintPriceAt(ethCum);
   // Sato monotone floor: (S/(K−mF)) · (mF/supply) · (1−fee). Conceptual
@@ -156,6 +163,22 @@ export function Curve() {
             />
             price
           </span>
+          <span className="flex items-center gap-1.5 text-ash">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 rounded-full border-2"
+              style={{ borderColor: COLORS.supply }}
+            />
+            minted
+          </span>
+          <span className="flex items-center gap-1.5 text-ash">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ background: COLORS.supply }}
+            />
+            circulating
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
@@ -174,18 +197,18 @@ export function Curve() {
           </span>
 
           <span className="text-ash">
-            price <span style={{ color: COLORS.price }}>{fmtUsd(priceMint)}</span>
+            price <span style={{ color: COLORS.price }}>{fmtUsd(priceMint, ethUsd)}</span>
           </span>
 
           <span
             className="rounded-md border px-2 py-1"
             style={{ borderColor: COLORS.edge }}
           >
-            mint <span style={{ color: COLORS.supply }}>{fmtUsd(priceMint)}</span>
+            mint <span style={{ color: COLORS.supply }}>{fmtUsd(priceMint, ethUsd)}</span>
             {" "}/{" "}
-            live burn <span style={{ color: COLORS.burn }}>{fmtUsd(priceLiveBurn)}</span>
+            live burn <span style={{ color: COLORS.burn }}>{fmtUsd(priceLiveBurn, ethUsd)}</span>
             {" "}/{" "}
-            floor <span className="text-bone/80">{fmtUsd(priceFloor)}</span>
+            floor <span className="text-bone/80">{fmtUsd(priceFloor, ethUsd)}</span>
           </span>
         </div>
       </header>
@@ -239,7 +262,7 @@ export function Curve() {
               orientation="right"
               dataKey="price"
               domain={[0, priceMaxOnScreen]}
-              tickFormatter={(v) => (v >= priceMaxOnScreen * 0.99 ? "∞" : fmtUsd(v))}
+              tickFormatter={(v) => (v >= priceMaxOnScreen * 0.99 ? "∞" : fmtUsd(v, ethUsd))}
               stroke={COLORS.price}
               fontSize={10}
               tickLine={false}
@@ -259,7 +282,7 @@ export function Curve() {
               labelFormatter={(v: number) => `cumEth: ${fmtEth(v)} Ξ`}
               formatter={(v: number, name: string) => {
                 if (name === "supply") return [fmtSupply(v, 2), "supply"];
-                return [`${fmtUsd(v)} (${fmtPriceEth(v)} Ξ)`, "price"];
+                return [`${fmtUsd(v, ethUsd)} (${fmtPriceEth(v)} Ξ)`, "price"];
               }}
             />
 
@@ -283,13 +306,25 @@ export function Curve() {
               isAnimationActive={false}
             />
 
-            {/* Vertical dashed line at the current curve position. */}
+            {/* Vertical dashed line at the actual cumEth (where mintedFair sits on the curve). */}
             <ReferenceLine
               x={ethCum}
               stroke={COLORS.ash}
               strokeDasharray="2 4"
               yAxisId="supply"
             />
+
+            {/* Second dashed line at the cumEth-equivalent of currentSupply.
+                When burns > rounding gap, this falls left of the main "now" line. */}
+            {burned > 1 && supplyEquivE > 0 && (
+              <ReferenceLine
+                x={supplyEquivE}
+                stroke={COLORS.burn}
+                strokeOpacity={0.35}
+                strokeDasharray="2 4"
+                yAxisId="supply"
+              />
+            )}
 
             {/* Hollow circle: fair supply at current cumEth (where the curve says we are). */}
             <ReferenceDot
@@ -303,9 +338,11 @@ export function Curve() {
               isFront
             />
 
-            {/* Filled dot: actual on-chain currentSupply (= mintedFair − burned). */}
+            {/* Filled dot: on-chain currentSupply plotted at its cumEth-equivalent
+                so it sits on the curve (Sato convention). Horizontal gap to the
+                hollow dot visualizes burned position in cumEth units. */}
             <ReferenceDot
-              x={ethCum}
+              x={supplyEquivE}
               y={supplyActual}
               yAxisId="supply"
               r={4}

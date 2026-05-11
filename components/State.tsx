@@ -2,13 +2,12 @@
 
 import { motion } from "framer-motion";
 import { useAscendState } from "@/hooks/useAscendState";
+import { useEthPrice } from "@/hooks/useEthPrice";
 import { livePerTokenBurnAt } from "@/lib/floor_v3";
+import { fmtUsd, fmtEthShort } from "@/lib/fmtUsd";
 
 const fmt = (n: number, d = 4) =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: d }) : "—";
-
-const fmtPrice = (n: number) =>
-  n < 1e-4 ? n.toExponential(3) : fmt(n, 8);
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -32,6 +31,7 @@ const cellVariants = {
 
 export function State() {
   const state = useAscendState();
+  const ethUsd = useEthPrice();
   const {
     floorEth,
     priceEth,
@@ -69,23 +69,27 @@ export function State() {
       >
         <Cell
           label="Mint price"
-          value={`${fmtPrice(priceEth)} Ξ`}
+          value={fmtUsd(priceEth, ethUsd)}
+          sub={fmtEthShort(priceEth)}
           hint="marginal cost on the bonding curve"
           emphasis
         />
         <Cell
           label="Live burn"
-          value={`${fmtPrice(liveBurnEth)} Ξ`}
+          value={fmtUsd(liveBurnEth, ethUsd)}
+          sub={fmtEthShort(liveBurnEth)}
           hint="payout per ascend, tier-1, after fees"
         />
         <Cell
           label="Floor (mono)"
-          value={`${fmtPrice(floorEth)} Ξ`}
+          value={fmtUsd(floorEth, ethUsd)}
+          sub={fmtEthShort(floorEth)}
           hint="lifetime min if held — conceptual"
         />
         <Cell
           label="Reserve"
-          value={`${fmt(reserveEth, 4)} Ξ`}
+          value={fmtUsd(reserveEth, ethUsd)}
+          sub={fmtEthShort(reserveEth)}
           hint="ETH the protocol actually holds"
         />
         <Cell
@@ -95,17 +99,20 @@ export function State() {
         />
         <Cell
           label="ETH in"
-          value={`${fmt(ethCum, 4)} Ξ`}
+          value={fmtUsd(ethCum, ethUsd)}
+          sub={fmtEthShort(ethCum)}
           hint="cumulative deposits routed to curve"
         />
         <Cell
           label="Market cap"
-          value={`${fmt(marketCapEth, 3)} Ξ`}
+          value={fmtUsd(marketCapEth, ethUsd)}
+          sub={fmtEthShort(marketCapEth)}
           hint="price × circulating · notional"
         />
         <Cell
           label="FDV"
-          value={`${fmt(fdvEth, 3)} Ξ`}
+          value={fmtUsd(fdvEth, ethUsd)}
+          sub={fmtEthShort(fdvEth)}
           hint="price × 21m cap · notional"
         />
       </motion.div>
@@ -116,11 +123,13 @@ export function State() {
 function Cell({
   label,
   value,
+  sub,
   hint,
   emphasis,
 }: {
   label: string;
   value: string;
+  sub?: string;
   hint: string;
   emphasis?: boolean;
 }) {
@@ -144,6 +153,9 @@ function Cell({
       >
         {value}
       </div>
+      {sub && (
+        <div className="mt-0.5 font-mono text-[10px] text-ash/70 tabular">{sub}</div>
+      )}
       <div className="mt-1 font-mono text-[10px] text-ash">{hint}</div>
     </motion.div>
   );

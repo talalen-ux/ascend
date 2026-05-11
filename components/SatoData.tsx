@@ -5,11 +5,10 @@ import { useAscendState } from "@/hooks/useAscendState";
 import { useActivity } from "@/hooks/useActivity";
 import {
   K,
-  USD_PER_ETH,
-  ethToUsd,
   marginalMintPriceAt,
   livePerTokenBurnAt,
 } from "@/lib/floor_v3";
+import { useEthPrice } from "@/hooks/useEthPrice";
 
 const C = {
   supply: "#c5ee47",
@@ -26,9 +25,9 @@ function fmtSupply(n: number, places = 2): string {
   return n.toFixed(0);
 }
 
-function fmtUsd(eth: number, opts: { compact?: boolean } = {}): string {
+function fmtUsd(eth: number, rate: number, opts: { compact?: boolean } = {}): string {
   if (!Number.isFinite(eth) || eth <= 0) return "$0";
-  const usd = ethToUsd(eth);
+  const usd = eth * rate;
   if (usd < 1e-5) return "$" + usd.toExponential(2);
   if (usd < 1e-3) return "$" + usd.toFixed(7);
   if (usd < 0.01) return "$" + usd.toFixed(6);
@@ -71,6 +70,7 @@ function Cell({
 export function SatoData() {
   const state = useAscendState();
   const act = useActivity();
+  const ethUsd = useEthPrice();
 
   const priceMint = marginalMintPriceAt(state.ethCum);
   // Sato monotone floor — conceptual long-term anchor. Read from chain.
@@ -90,7 +90,7 @@ export function SatoData() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="panel mt-6 p-5 md:p-6"
+      className="panel p-5 md:p-6"
     >
       <header className="mb-4 flex items-center gap-3">
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
@@ -99,7 +99,7 @@ export function SatoData() {
         <span className="text-[11px] text-ash">live · refreshes every 30s</span>
       </header>
 
-      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 md:grid-cols-3">
         <div>
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Supply
@@ -121,15 +121,15 @@ export function SatoData() {
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Price
           </h3>
-          <Cell label="mint" value={fmtUsd(priceMint)} valueClass="text-bone" />
+          <Cell label="mint" value={fmtUsd(priceMint, ethUsd)} valueClass="text-bone" />
           <Cell
             label="live burn"
-            value={fmtUsd(priceLiveBurnEth)}
+            value={fmtUsd(priceLiveBurnEth, ethUsd)}
             sub="tier-1, after fees + penalty"
           />
           <Cell
             label="floor (mono)"
-            value={fmtUsd(priceFloorEth)}
+            value={fmtUsd(priceFloorEth, ethUsd)}
             sub="lifetime min if held"
           />
           <Cell
@@ -147,10 +147,10 @@ export function SatoData() {
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Valuation
           </h3>
-          <Cell label="mcap (fd)" value={fmtUsd(fdvEth)} sub={`${fmtEth(fdvEth, 2)} Ξ`} />
+          <Cell label="mcap (fd)" value={fmtUsd(fdvEth, ethUsd)} sub={`${fmtEth(fdvEth, 2)} Ξ`} />
           <Cell
             label="mcap (circ)"
-            value={fmtUsd(circMcapEth)}
+            value={fmtUsd(circMcapEth, ethUsd)}
             sub={`${fmtEth(circMcapEth, 4)} Ξ`}
           />
         </div>
@@ -161,10 +161,10 @@ export function SatoData() {
           </h3>
           <Cell
             label="liquidity"
-            value={fmtUsd(state.reserveEth)}
+            value={fmtUsd(state.reserveEth, ethUsd)}
             sub={`${fmtEth(state.reserveEth, 4)} Ξ`}
           />
-          <Cell label="eth/ascend" value={fmtUsd(ethBackingPerSato)} />
+          <Cell label="eth/ascend" value={fmtUsd(ethBackingPerSato, ethUsd)} />
           <Cell
             label="burnt fees"
             value={act.isLoading ? "…" : `${fmtEth(act.burntFeesEth, 4)} Ξ`}
@@ -212,7 +212,7 @@ export function SatoData() {
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Activity 24h
           </h3>
-          <Cell label="vol" value={act.isLoading ? "…" : fmtUsd(act.vol24hEth)} sub={act.isLoading ? "" : `${fmtEth(act.vol24hEth, 4)} Ξ`} />
+          <Cell label="vol" value={act.isLoading ? "…" : fmtUsd(act.vol24hEth, ethUsd)} sub={act.isLoading ? "" : `${fmtEth(act.vol24hEth, 4)} Ξ`} />
           <Cell label="txns" value={act.isLoading ? "…" : act.txns24h.toLocaleString()} />
           <Cell
             label="net flow"
