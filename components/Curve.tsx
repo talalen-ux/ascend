@@ -236,43 +236,46 @@ export function Curve() {
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       className="panel p-5 md:p-6"
     >
-      <header className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 font-mono text-[11px]">
-        <div className="flex items-baseline gap-3">
-          <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-            payout vs hold-time
-          </span>
-          <span className="text-ash">
-            mint <span style={{ color: COLORS.mint }}>{fmtUsd(mintPriceEth, ethUsd)}</span>
-          </span>
-          <span className="text-ash">
-            now <span style={{ color: COLORS.flip }}>{fmtUsd(currentTierPayout, ethUsd)}</span>
-          </span>
-          <span className="text-ash">
-            held <span style={{ color: COLORS.payout }}>{fmtUsd(baseBurnEth * bonusMult, ethUsd)}</span>
-          </span>
+      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="flex flex-col">
+      <header className="mb-4 space-y-2 font-mono text-[11px]">
+        <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+          payout vs hold-time
         </div>
-        <div className="flex items-baseline gap-3 text-ash">
-          {userHoldAge !== null && (
-            <span>
-              you{" "}
-              <span style={{ color: COLORS.payout }}>
-                {userHoldAge.toLocaleString()}b
-              </span>{" "}
-              <span className="text-ash/70">
-                ({(penaltyMultBps(userHoldAge) / 100).toFixed(2)}%)
-              </span>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <div className="flex items-baseline gap-3">
+            <span className="text-ash">
+              mint <span style={{ color: COLORS.mint }}>{fmtUsd(mintPriceEth, ethUsd)}</span>
             </span>
-          )}
-          <span>
-            flip cost <span className="text-bone">{flipCostPct.toFixed(2)}%</span>
-          </span>
-          <span>
-            held cost <span className="text-bone">{heldCostPct.toFixed(2)}%</span>
-          </span>
+            <span className="text-ash">
+              now <span style={{ color: COLORS.flip }}>{fmtUsd(currentTierPayout, ethUsd)}</span>
+            </span>
+            <span className="text-ash">
+              held <span style={{ color: COLORS.payout }}>{fmtUsd(baseBurnEth * bonusMult, ethUsd)}</span>
+            </span>
+          </div>
+          <div className="flex items-baseline gap-3 text-ash">
+            {userHoldAge !== null && (
+              <span>
+                you{" "}
+                <span style={{ color: COLORS.payout }}>
+                  {userHoldAge.toLocaleString()}b
+                </span>{" "}
+                <span className="text-ash/70">
+                  ({(penaltyMultBps(userHoldAge) / 100).toFixed(2)}%)
+                </span>
+              </span>
+            )}
+            <span>
+              flip cost <span className="text-bone">{flipCostPct.toFixed(2)}%</span>
+            </span>
+            <span>
+              held cost <span className="text-bone">{heldCostPct.toFixed(2)}%</span>
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-2">
       <div className="h-72 md:h-[22rem] -mx-2">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 18, right: 16, bottom: 30, left: 8 }}>
@@ -411,44 +414,52 @@ export function Curve() {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      </div>{/* end of left column */}
 
       {/* Bonding-curve thumbnail — sits in the right column of the same
           row as the patience chart on lg+. Stacks below on smaller screens. */}
       <div className="flex flex-col">
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 font-mono text-[11px]">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-              curve & burns
-            </span>
-            <span className="flex items-center gap-1.5 text-ash">
-              <span
-                aria-hidden
-                className="inline-block h-[2px] w-3"
-                style={{ background: COLORS.payout }}
-              />
-              q(e)
-            </span>
-            <span className="flex items-center gap-1.5 text-ash">
-              <span
-                aria-hidden
-                className="inline-block h-[2px] w-3"
-                style={{ background: COLORS.flip }}
-              />
-              circulating
-            </span>
+        <header className="mb-4 space-y-2 font-mono text-[11px]">
+          <div className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
+            curve & burns
           </div>
-          <span className="text-ash">
-            mF <span style={{ color: COLORS.payout }}>{fmtSupply(mF, 2)}</span>
-            {" · "}
-            burned{" "}
-            <span style={{ color: COLORS.flip }}>
-              {fmtSupply(Math.max(0, mF - state.supply), 2)}
-            </span>
-            {" · "}
-            of <span className="text-bone">{fmtSupply(K, 0)}</span>
-          </span>
-        </div>
-        <div className="h-72 md:h-[22rem] -mx-2 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <div className="flex items-baseline gap-3">
+              <span className="text-ash">
+                mF{" "}
+                <span style={{ color: COLORS.payout }}>{fmtSupply(mF, 2)}</span>
+              </span>
+              <span className="text-ash">
+                circ{" "}
+                <span style={{ color: COLORS.payout }}>
+                  {fmtSupply(state.supply, 2)}
+                </span>
+              </span>
+              <span className="text-ash">
+                burned{" "}
+                <span style={{ color: COLORS.flip }}>
+                  {fmtSupply(Math.max(0, mF - state.supply), 2)}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-baseline gap-3 text-ash">
+              <span>
+                cumEth{" "}
+                <span className="text-bone">{state.ethCum.toFixed(3)} Ξ</span>
+              </span>
+              <span>
+                progress{" "}
+                <span className="text-bone">
+                  {((state.supply / K) * 100).toFixed(2)}%
+                </span>
+              </span>
+              <span>
+                of <span className="text-bone">{fmtSupply(K, 0)}</span>
+              </span>
+            </div>
+          </div>
+        </header>
+        <div className="h-72 md:h-[22rem] -mx-2">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={curveTrace}
@@ -544,17 +555,25 @@ export function Curve() {
                 strokeOpacity={0.55}
                 strokeDasharray="3 3"
               />
-              {state.ethCum > 0 && state.supply > 0 && (
-                <ReferenceDot
-                  x={Math.min(state.ethCum, S * 5)}
-                  y={state.supply}
-                  r={6}
-                  fill={COLORS.payout}
-                  stroke={COLORS.bone}
-                  strokeWidth={2}
-                  isFront
-                />
-              )}
+              {(() => {
+                if (state.ethCum <= 0) return null;
+                // Always plot the dot on the analytical curve top so it
+                // sits exactly on the rendered q(e) silhouette, regardless
+                // of any historical burn dip at the current cumEth.
+                const xClamped = Math.min(state.ethCum, S * 5);
+                const yOnCurve = K * (1 - Math.exp(-xClamped / S));
+                return (
+                  <ReferenceDot
+                    x={xClamped}
+                    y={yOnCurve}
+                    r={6}
+                    fill={COLORS.payout}
+                    stroke={COLORS.bone}
+                    strokeWidth={2}
+                    isFront
+                  />
+                );
+              })()}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
