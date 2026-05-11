@@ -114,6 +114,39 @@ export function Trade() {
           muted
           small
         />
+        {isBuy && (
+          <Row
+            label="Surplus take (3%)"
+            value={Number(amount || "0") * 0.03}
+            suffix="Ξ → reserve"
+            muted
+            small
+          />
+        )}
+        {!isBuy && (
+          <>
+            <Row
+              label="Token burn fee (1%)"
+              value={Number(amount || "0") * 0.01}
+              suffix="ascend"
+              muted
+              small
+            />
+            <div className="flex items-baseline justify-between text-[11px]">
+              <span className="text-ash">Block-age penalty</span>
+              <span className="text-bone">
+                tier-1 (90% payout, 10% penalty){" "}
+                <span className="text-ash">— 0–10 blk since your last mint</span>
+              </span>
+            </div>
+            {state.bonusBps > 0 && (
+              <div className="flex items-baseline justify-between text-[11px]">
+                <span className="text-ash">Reserve-aware bonus</span>
+                <span className="text-accent">+{(state.bonusBps / 100).toFixed(2)}%</span>
+              </div>
+            )}
+          </>
+        )}
         <Row
           label="Floor after"
           value={quote?.floorAfter ?? state.floorEth}
@@ -165,8 +198,8 @@ export function Trade() {
 
       <p className="mt-5 text-[11px] leading-relaxed text-ash">
         {isBuy
-          ? "you mint new ascend against the bonding curve. 0.7% fee — 5/7 stays in the reserve (raises the burn floor for every holder), 2/7 funds the tile-flip pool. supply is created on demand; no LP, no pre-mint, no admin path."
-          : "you redeem ascend against the inverse curve, getting ETH from the protocol's reserve. 0.7% fee — same 5/7 reserve / 2/7 tile split. each burn unwinds the curve a step; the reserve only ever leaves through this path."}
+          ? "mint new ascend against the bonding curve. 0.7% fee + 3% surplus take. surplus accumulates as overcollateralization that pays bonus on long-hold burns. no LP, no pre-mint, no admin path."
+          : "redeem ascend through the inverse curve. 0.7% protocol fee + 1% token-side burn + block-age penalty (90% payout 0–10 blk, 95% 10–100, 99% 100–1000, 100% past 1000). penalties go to surplus reserve, which pays a bonus once over-collateralization tops 10%. patient holders are subsidized by impatient flippers."}
       </p>
     </section>
   );

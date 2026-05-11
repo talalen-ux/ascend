@@ -103,7 +103,7 @@ export function SatoData() {
         <span className="text-[11px] text-ash">live · refreshes every 30s</span>
       </header>
 
-      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <div>
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Supply
@@ -126,12 +126,16 @@ export function SatoData() {
             Price
           </h3>
           <Cell label="market" value={fmtUsd(priceMint)} valueClass="text-bone" />
+          <Cell label="burn" value={fmtUsd(priceBurnEth)} />
+          <Cell label="mint" value={fmtUsd(priceMint)} />
           <Cell
-            label="burn"
-            value={fmtUsd(priceBurnEth)}
-            valueClass=""
+            label="spread"
+            value={
+              priceMint > 0
+                ? `${(((priceMint - priceBurnEth) / priceMint) * 100).toFixed(2)}%`
+                : "—"
+            }
           />
-          <Cell label="mint" value={fmtUsd(priceMint)} valueClass="" />
         </div>
 
         <div>
@@ -155,10 +159,47 @@ export function SatoData() {
             value={fmtUsd(state.reserveEth)}
             sub={`${fmtEth(state.reserveEth, 4)} Ξ`}
           />
-          <Cell label="eth backing per ascend" value={fmtUsd(ethBackingPerSato)} />
+          <Cell label="eth/ascend" value={fmtUsd(ethBackingPerSato)} />
           <Cell
             label="burnt fees"
             value={act.isLoading ? "…" : `${fmtEth(act.burntFeesEth, 4)} Ξ`}
+          />
+        </div>
+
+        <div>
+          <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
+            Surplus
+          </h3>
+          <Cell
+            label="overcollat"
+            value={`${(state.surplusRatioBps / 100).toFixed(2)}%`}
+            sub={`${fmtEth(state.surplusEth, 4)} Ξ`}
+            valueClass={
+              state.surplusRatioBps >= 1000 ? "text-accent" : "text-bone"
+            }
+          />
+          <Cell
+            label="bonus active"
+            value={
+              state.bonusBps > 0
+                ? `+${(state.bonusBps / 100).toFixed(2)}%`
+                : state.surplusRatioBps >= 1000
+                ? "<0.01%"
+                : "0%"
+            }
+            sub={
+              state.bonusBps > 0
+                ? "paid on every burn"
+                : state.surplusRatioBps >= 1000
+                ? "trigger crossed; ramp warming"
+                : `triggers @ 10%`
+            }
+            valueClass={state.bonusBps > 0 ? "text-accent" : "text-bone"}
+          />
+          <Cell
+            label="model"
+            value="Sato + 3% surplus"
+            sub="penalty: 0–10/100/1000 blk"
           />
         </div>
 
@@ -169,7 +210,7 @@ export function SatoData() {
           <Cell label="vol" value={act.isLoading ? "…" : fmtUsd(act.vol24hEth)} sub={act.isLoading ? "" : `${fmtEth(act.vol24hEth, 4)} Ξ`} />
           <Cell label="txns" value={act.isLoading ? "…" : act.txns24h.toLocaleString()} />
           <Cell
-            label="net mint flow"
+            label="net flow"
             value={act.isLoading ? "…" : fmtSupply(act.mintFlowAscend - act.burnFlowAscend, 2)}
             sub={
               act.isLoading

@@ -25,6 +25,12 @@ export interface AscendState extends StateV3 {
   forwardSupply: number;
   /// Structural drift = forwardSupply − mintedFair. PRBMath rounding gap.
   drift: number;
+  /// Overcollateralization buffer (3% of every mint plus burn penalties).
+  surplusEth: number;
+  /// surplusReserve / cumulativeEthIn in basis points (1bp = 0.01%).
+  surplusRatioBps: number;
+  /// Active reserve-aware burn bonus in basis points.
+  bonusBps: number;
   /// True when the dapp is showing pre-deploy demo numbers.
   isDemo: boolean;
   /// True while contracts are loading.
@@ -42,6 +48,9 @@ const DEMO_STATE: AscendState = {
   circulating: 0,
   forwardSupply: 0,
   drift: 0,
+  surplusEth: 0,
+  surplusRatioBps: 0,
+  bonusBps: 0,
   isDemo: true,
   isLoading: false,
 };
@@ -92,6 +101,24 @@ export function useAscendState(): AscendState {
             functionName: "drift",
             chainId: CHAIN_ID,
           },
+          {
+            address: ASCEND_HOOK_ADDRESS as `0x${string}`,
+            abi: ASCEND_HOOK_V3_ABI,
+            functionName: "surplusReserve",
+            chainId: CHAIN_ID,
+          },
+          {
+            address: ASCEND_HOOK_ADDRESS as `0x${string}`,
+            abi: ASCEND_HOOK_V3_ABI,
+            functionName: "surplusRatioBps",
+            chainId: CHAIN_ID,
+          },
+          {
+            address: ASCEND_HOOK_ADDRESS as `0x${string}`,
+            abi: ASCEND_HOOK_V3_ABI,
+            functionName: "currentBonusBps",
+            chainId: CHAIN_ID,
+          },
         ] as const)
       : [],
     query: { enabled: isConfigured, refetchInterval: 12_000 },
@@ -106,6 +133,9 @@ export function useAscendState(): AscendState {
   const mintedFair = data?.[4]?.result ? Number(formatEther(data[4].result as bigint)) : 0;
   const forwardSupply = data?.[5]?.result ? Number(formatEther(data[5].result as bigint)) : 0;
   const drift = data?.[6]?.result ? Number(formatEther(data[6].result as bigint)) : 0;
+  const surplusEth = data?.[7]?.result ? Number(formatEther(data[7].result as bigint)) : 0;
+  const surplusRatioBps = data?.[8]?.result ? Number(data[8].result as bigint) : 0;
+  const bonusBps = data?.[9]?.result ? Number(data[9].result as bigint) : 0;
 
   const priceEth = marginalMintPriceAt(ethCum);
   const circulating = supply;
@@ -119,6 +149,9 @@ export function useAscendState(): AscendState {
     mintedFair,
     forwardSupply,
     drift,
+    surplusEth,
+    surplusRatioBps,
+    bonusBps,
     floorEth,
     priceEth,
     marketCapEth,
