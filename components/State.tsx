@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useAscendState } from "@/hooks/useAscendState";
+import { livePerTokenBurnAt } from "@/lib/floor_v3";
 
 const fmt = (n: number, d = 4) =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: d }) : "—";
@@ -30,6 +31,7 @@ const cellVariants = {
 };
 
 export function State() {
+  const state = useAscendState();
   const {
     floorEth,
     priceEth,
@@ -37,11 +39,12 @@ export function State() {
     fdvEth,
     reserveEth,
     circulating,
+    ethCum,
     isDemo,
     isLoading,
-  } = useAscendState();
+  } = state;
 
-  const upside = floorEth > 0 ? priceEth / floorEth : 0;
+  const liveBurnEth = livePerTokenBurnAt(state);
 
   return (
     <section className="mt-10">
@@ -62,38 +65,48 @@ export function State() {
         initial="hidden"
         whileInView="visible"
         viewport={{ once: true, margin: "-30px" }}
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-edge bg-edge md:grid-cols-3"
+        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-edge bg-edge md:grid-cols-4"
       >
         <Cell
-          label="Price"
+          label="Mint price"
           value={`${fmtPrice(priceEth)} Ξ`}
-          hint="spot price on the LP curve"
+          hint="marginal cost on the bonding curve"
           emphasis
         />
         <Cell
-          label="Floor"
-          value={`${fmtPrice(floorEth)} Ξ`}
-          hint="burn redeems against the curve"
+          label="Live burn"
+          value={`${fmtPrice(liveBurnEth)} Ξ`}
+          hint="payout per ascend, tier-1, after fees"
         />
         <Cell
-          label="Market cap"
-          value={`${fmt(marketCapEth, 3)} Ξ`}
-          hint="price × circulating"
+          label="Floor (mono)"
+          value={`${fmtPrice(floorEth)} Ξ`}
+          hint="lifetime min if held — conceptual"
         />
         <Cell
           label="Reserve"
           value={`${fmt(reserveEth, 4)} Ξ`}
-          hint="ETH backing the supply, only grows"
+          hint="ETH the protocol actually holds"
         />
         <Cell
           label="Circulating"
           value={fmt(circulating, 2)}
-          hint="ascend minted from the curve"
+          hint="ascend currently in wallets"
+        />
+        <Cell
+          label="ETH in"
+          value={`${fmt(ethCum, 4)} Ξ`}
+          hint="cumulative deposits routed to curve"
+        />
+        <Cell
+          label="Market cap"
+          value={`${fmt(marketCapEth, 3)} Ξ`}
+          hint="price × circulating · notional"
         />
         <Cell
           label="FDV"
           value={`${fmt(fdvEth, 3)} Ξ`}
-          hint={`upside-to-floor: ${upside > 0 ? upside.toFixed(1) : "—"}×`}
+          hint="price × 21m cap · notional"
         />
       </motion.div>
     </section>

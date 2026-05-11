@@ -14,7 +14,13 @@ import {
   YAxis,
 } from "recharts";
 import { useAscendState } from "@/hooks/useAscendState";
-import { K, S } from "@/lib/floor_v3";
+import {
+  K,
+  S,
+  curveSupplyAt,
+  MINT_FEE_RATE,
+  SURPLUS_RATE,
+} from "@/lib/floor_v3";
 
 const C = {
   ascend: "#c5ee47",
@@ -23,10 +29,10 @@ const C = {
   ash: "#71717a",
 };
 
-// Marginal ascend issuance rate (ascend per next ETH at cumulative e).
-// dq/de = (K/S) · e^(−e/S)
-function issuanceAt(e: number): number {
-  return (K / S) * Math.exp(-e / S);
+/// Ascend issued in the ETH window [eLo, eHi] — the integral of the
+/// marginal rate. Sums to ~K across all bins (the asymptote claim).
+function issuedInBin(eLo: number, eHi: number): number {
+  return curveSupplyAt(eHi) - curveSupplyAt(eLo);
 }
 
 function fmtAsc(n: number): string {
@@ -51,23 +57,36 @@ export function Issuance() {
   const state = useAscendState();
   const ethCumNow = state.ethCum;
 
-  // Build ascend issuance bins. 8 bars at multiples of S/2 starting from 0.
-  // Matches Sato's halving-style visual where each bar is a discrete window.
+  // Build ascend issuance bins as discrete ETH windows. Each bar's height
+  // is the actual ascend ISSUED in that window (= ∫ marginal rate dETH),
+  // not the instantaneous rate. Sums to ~K=21m across all bins, which is
+  // the asymptote we visually claim.
   const STEP = S / 2;
   const ASCEND = Array.from({ length: 8 }, (_, i) => {
-    const e = i * STEP;
+    const eLo = i * STEP;
+    const eHi = eLo + STEP;
     return {
-      bin: e === 0 ? "0" : e.toFixed(2),
-      eth: e,
-      rate: issuanceAt(e),
+      bin: `${eLo.toFixed(2)}–${eHi.toFixed(2)}`,
+      label: eLo.toFixed(2),
+      eth: eLo,
+      issued: issuedInBin(eLo, eHi),
     };
   });
 
-  // Find the "now" position to mark with a reference line on ascend chart.
+  // Mark the "now" bin with a dashed reference line.
   const nowIdx = Math.min(
-    Math.max(0, Math.round(ethCumNow / STEP)),
-    ASCEND.length - 1
+    Math.max(0, Math.floor(ethCumNow / STEP)),
+    ASCEND.length - 1,
   );
+
+  // "now" headline — the realized mint amount for a reference 1 Ξ input
+  // at the current cumulative ETH. NOT the marginal slope (which would
+  // overstate by ~3× since the rate decays steeply over a 1 Ξ arc).
+  // ethToCurve = 1 · (1 − mintFee) · (1 − surplus). Matches what a user
+  // sees if they type 1 into the Mine panel.
+  const REF_ETH = 1;
+  const refEthToCurve = REF_ETH * (1 - MINT_FEE_RATE) * (1 - SURPLUS_RATE);
+  const nowFor1Eth = curveSupplyAt(ethCumNow + refEthToCurve) - curveSupplyAt(ethCumNow);
 
   return (
     <motion.section
@@ -129,7 +148,7 @@ export function Issuance() {
           <div className="flex items-baseline justify-between text-[11px] font-mono">
             <span className="text-ash">ascend issuance</span>
             <span className="text-ash">
-              now: {fmtAsc(issuanceAt(ethCumNow))} ascend/eth
+              now: {fmtAsc(nowFor1Eth)} ascend / 1 Ξ
             </span>
           </div>
 
@@ -138,7 +157,7 @@ export function Issuance() {
               <ComposedChart data={ASCEND} margin={{ top: 12, right: 8, bottom: 28, left: 8 }}>
                 <CartesianGrid stroke={C.edge} strokeDasharray="2 6" />
                 <XAxis
-                  dataKey="bin"
+                  dataKey="label"
                   stroke={C.ash}
                   fontSize={10}
                   tickLine={false}
@@ -160,21 +179,22 @@ export function Issuance() {
                     fontSize: 11,
                     fontFamily: "var(--font-mono)",
                   }}
-                  labelFormatter={(v) => `cumEth: ${v} Ξ`}
-                  formatter={(v: number) => [`${fmtAsc(v)} ascend/eth`, "marginal rate"]}
+                  labelFormatter={(_v, payload) =>
+                    payload && payload[0] ? `eth bin ${payload[0].payload.bin} Ξ` : ""
+                  }
+                  formatter={(v: number) => [`${fmtAsc(v)} ascend`, "issued in bin"]}
                 />
-                <Bar dataKey="rate" fill={C.ascend} fillOpacity={0.7} />
-                {/* dashed line at the "now" bin */}
+                <Bar dataKey="issued" fill={C.ascend} fillOpacity={0.7} />
                 {nowIdx > 0 && (
                   <ReferenceLine
-                    x={ASCEND[nowIdx].bin}
+                    x={ASCEND[nowIdx].label}
                     stroke={C.ash}
                     strokeDasharray="2 4"
                   />
                 )}
                 <Line
                   type="monotone"
-                  dataKey="rate"
+                  dataKey="issued"
                   stroke={C.ascend}
                   strokeWidth={1.5}
                   dot={{ r: 2 }}
@@ -184,17 +204,17 @@ export function Issuance() {
             </ResponsiveContainer>
           </div>
           <p className="mt-1 text-center text-[11px] text-ash">
-            cumulative eth (0 to ∞)
+            cumulative eth bins · 0.15 Ξ each
           </p>
         </div>
       </div>
 
       <p className="mt-4 text-[11px] leading-relaxed text-ash">
-        bitcoin issues in discrete halving epochs (50, 25, 12.5 btc per block, every ~4
-        years; subsidy reaches zero around 2140). ascend issues continuously: the
-        marginal mint rate (ascend per eth) decays smoothly with each eth of inflow and
-        never reaches zero. both asymptote at <span className="text-bone">21m</span>,
-        neither ever reaches it.
+        bitcoin issues in discrete halving epochs (50, 25, 12.5 btc per block,
+        every ~4 years; subsidy reaches zero around 2140). ascend issues
+        continuously: each bar shows ascend minted in that 0.15 Ξ window. bars
+        sum to <span className="text-bone">~21m</span>, the asymptote neither
+        chain ever reaches.
       </p>
     </motion.section>
   );
