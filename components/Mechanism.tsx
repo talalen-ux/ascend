@@ -4,34 +4,34 @@ import { motion } from "framer-motion";
 
 const properties = [
   {
-    title: "One LP, one chart",
+    title: "Bonding curve, not LP",
     body:
-      "ascend trades on a single Uniswap V4 pool whose only LP is the hook itself. buyers and sellers walk the same constant-product curve, so DexScreener prints normal green/red candles on a single price band. no admin, no governance, no upgrade path.",
+      "ascend issues against a Sato-style exponential curve — q(e) = K·(1−e^(−e/S)) — through a Uniswap V4 hook. supply starts at 0; every mint creates new tokens, every burn destroys them. there is no LP position anyone owns or can withdraw — the hook is the issuer, the reserve is its balance.",
   },
   {
-    title: "Floor only goes up",
+    title: "3% surplus on every mint",
     body:
-      "every swap pays a 1% fee — buys also pay a flat ~$2 surcharge. 70% of every fee is retained in the LP, growing the ETH side without minting any ascend. the LP's lower bound — vault per circulating ascend — is monotone non-decreasing forever. holders have a redemption guarantee that compounds with volume.",
+      "of every mint deposit, 0.3% goes to the protocol fee and 3% goes to a dedicated `surplusReserve` that never advances the curve. the reserve grows faster than the curve obligation — every mint mechanically over-collateralizes the protocol on behalf of every existing holder.",
   },
   {
-    title: "Ascension Grid · the share",
+    title: "Block-age burn penalty",
     body:
-      "30% of every swap fee funds a 12×12 cryptographic grid. once per 24h epoch, 68% of holders are selected at random — the chosen flip one tile and reveal a 1× to 4× multiplier on their share of the pool. the more volume, the bigger the prize. unclaimed tiles roll forward.",
+      "burning within 10 blocks of your last mint pays 90% of the curve return. 10–100 blocks: 95%. 100–1000: 99%. 1000+ blocks: full payout. tracked per-holder via a weighted-average receive block, so routing tokens through a fresh wallet doesn't dodge it. flippers literally fund diamond hands.",
   },
   {
-    title: "Real liquidity",
+    title: "Reserve-aware bonus",
     body:
-      "the vault IS the LP. every wei of accumulated fee shows up as visible depth on Uniswap, DexScreener, and every aggregator. no off-pool routing, no honeypot heuristic flags, no two-band whipsaw. it looks normal because it is normal.",
+      "when surplus exceeds 10% of curve-owed reserves, every burn earns a bonus paid out of the buffer. ramps to a 5% maximum at 35% over-collateralization. accumulated panic-burn penalties subsidize the long-term holder's eventual exit — without governance, without a treasury vote.",
   },
   {
-    title: "No team, no presale",
+    title: "Tile rewards as buyback",
     body:
-      "122 million ascend, all minted into the LP at genesis. zero allocations. zero unlocks. the only path into circulation is to swap ETH for it through the V4 pool. the only path out is to swap ascend back. there is no other way.",
+      "30% of every fee funds a 12×12 cryptographic grid. claim a tile and your reward isn't paid in ETH — it's auto-routed back through the curve as a fresh mint that lifts the price for everyone, then issued to you as ascend. tile rewards become protocol-backed buybacks.",
   },
   {
-    title: "Verifiable forever",
+    title: "No team, no presale, no admin",
     body:
-      "the LP composition, the floor, the tile pool, every swap fee, every claim — all readable on-chain via standard V4 reads. anyone can compute the floor. anyone can claim a tile. anyone can audit the curve. nothing is off-chain.",
+      "the hook is the only minter. the curve is the only price oracle. no allocation, no vesting, no pause, no upgrade. all the parameters — K, S, fees, penalty tiers, bonus formula — are constants, set at deploy. when we walk away, the contract keeps running on the same rules.",
   },
 ];
 
@@ -69,13 +69,16 @@ export function Mechanism() {
           Mechanism
         </p>
         <h2 className="mt-3 text-2xl font-medium leading-tight text-bone md:text-[36px]">
-          a self-compounding asset with a share for everyone.
+          impatient flippers fund the patient holders.
         </h2>
         <p className="mt-4 text-[14px] leading-relaxed text-ash">
-          ascend is a Uniswap V4 hook that owns its own pool. every swap
-          deepens the floor. every swap fills a tile. holders aren't
-          spectators — they have a deterministic, claimable share of the
-          protocol's volume, on-chain, every day.
+          ascend takes the Sato bonding curve and adds four upgrades that
+          structurally bias the protocol toward long-term participation:
+          mathematically symmetric forward/inverse curves, a 3% backing
+          surplus on every mint, a continuous block-age burn penalty,
+          and a reserve-aware bonus that pays diamond hands out of the
+          accumulated penalty pool. zero admin, zero treasury, zero
+          governance — just better math.
         </p>
       </motion.header>
 
