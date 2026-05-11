@@ -66,7 +66,7 @@ export function Mechanism() {
         className="max-w-2xl"
       >
         <p className="text-[10px] font-medium uppercase tracking-widest2 text-accent">
-          Mechanism
+          structural edge
         </p>
         <h2 className="mt-3 text-2xl font-medium leading-tight text-bone md:text-[36px]">
           impatient flippers fund the patient holders.
@@ -109,6 +109,9 @@ export function Mechanism() {
             />
             <h3 className="relative text-[15px] font-medium text-bone">{p.title}</h3>
             <p className="relative mt-2 text-[13px] leading-relaxed text-ash">{p.body}</p>
+            <p className="relative mt-3 font-mono text-[11px] uppercase tracking-widest2 text-accent">
+              {p.kicker}
+            </p>
           </motion.div>
         ))}
       </motion.div>
