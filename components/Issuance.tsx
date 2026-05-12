@@ -21,6 +21,7 @@ import {
   MINT_FEE_RATE,
   SURPLUS_RATE,
 } from "@/lib/floor_v3";
+import { EthIcon } from "@/components/EthIcon";
 
 const C = {
   ascend: "#c5ee47",
@@ -148,7 +149,7 @@ export function Issuance() {
           <div className="flex items-baseline justify-between text-[11px] font-mono">
             <span className="text-ash">ascend issuance</span>
             <span className="text-ash">
-              now: {fmtAsc(nowFor1Eth)} ascend / 1 Ξ
+              now: {fmtAsc(nowFor1Eth)} ascend / 1 <EthIcon size={10} />
             </span>
           </div>
 
@@ -204,7 +205,7 @@ export function Issuance() {
             </ResponsiveContainer>
           </div>
           <p className="mt-1 text-center text-[11px] text-ash">
-            cumulative eth bins · {STEP.toFixed(STEP < 1 ? 2 : 0)} Ξ each
+            cumulative eth bins · {STEP.toFixed(STEP < 1 ? 2 : 0)} <EthIcon size={10} /> each
           </p>
         </div>
       </div>
@@ -212,7 +213,7 @@ export function Issuance() {
       <p className="mt-4 text-[11px] leading-relaxed text-ash">
         bitcoin issues in discrete halving epochs (50, 25, 12.5 btc per block,
         every ~4 years; subsidy reaches zero around 2140). ascend issues
-        continuously: each bar shows ascend minted in that {STEP.toFixed(STEP < 1 ? 2 : 0)} Ξ window. bars
+        continuously: each bar shows ascend minted in that {STEP.toFixed(STEP < 1 ? 2 : 0)} <EthIcon size={10} /> window. bars
         sum to <span className="text-bone">~100m</span>, the asymptote neither
         chain ever reaches.
       </p>

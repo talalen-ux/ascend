@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.51.23",
+    "@web3icons/react": "^4.1.17",
     "clsx": "2.1.1",
     "framer-motion": "11.3.21",
     "next": "^14.2.32",

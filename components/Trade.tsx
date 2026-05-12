@@ -10,6 +10,7 @@ import { useEthPrice } from "@/hooks/useEthPrice";
 import { quoteBuy, quoteSell } from "@/lib/floor";
 import { MAX_MINT_PER_TX } from "@/lib/floor_v3";
 import { fmtUsd, fmtEthShort } from "@/lib/fmtUsd";
+import { EthIcon } from "@/components/EthIcon";
 
 export function Trade() {
   const state = useAscendState();
@@ -95,7 +96,9 @@ export function Trade() {
             className="tabular w-full bg-transparent font-mono text-[32px] leading-none text-bone outline-none placeholder:text-ash/40 md:text-[40px]"
             placeholder="0.00"
           />
-          <span className="font-mono text-sm text-ash">{isBuy ? "Ξ" : "ascend"}</span>
+          <span className="font-mono text-sm text-ash">
+            {isBuy ? <EthIcon size={14} /> : "ascend"}
+          </span>
         </div>
         {/* Anti-vacuum cap warning. The contract reverts above MAX_MINT_PER_TX
             so we surface the limit instead of silently quoting zero. */}
@@ -103,7 +106,7 @@ export function Trade() {
           <div className="mt-2 flex items-baseline gap-2 text-[11px] text-accent2">
             <span>⚠</span>
             <span>
-              max <span className="font-mono">{MAX_MINT_PER_TX} Ξ</span> per mint
+              max <span className="font-mono">{MAX_MINT_PER_TX} <EthIcon size={10} /></span> per mint
               <span className="text-ash"> · split across multiple txs to mint more</span>
             </span>
           </div>

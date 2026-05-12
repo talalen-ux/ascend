@@ -30,6 +30,7 @@ import { ASCEND_HOOK_V3_ABI } from "@/lib/abi";
 import { ASCEND_HOOK_ADDRESS, CHAIN_ID, isConfigured } from "@/lib/config";
 import { useEthPrice } from "@/hooks/useEthPrice";
 import { useActivity } from "@/hooks/useActivity";
+import { EthIcon } from "@/components/EthIcon";
 
 const COLORS = {
   payout: "#c5ee47",   // ascend green — held payout
@@ -445,7 +446,7 @@ export function Curve() {
             <div className="flex items-baseline gap-3 text-ash">
               <span>
                 cumEth{" "}
-                <span className="text-bone">{state.ethCum.toFixed(3)} Ξ</span>
+                <span className="text-bone">{state.ethCum.toFixed(3)} <EthIcon size={10} /></span>
               </span>
               <span>
                 progress{" "}
