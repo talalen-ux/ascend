@@ -41,13 +41,13 @@ import {TileEngine} from "./TileEngine.sol";
 ///         and routes the tile share to TileEngine.
 ///
 ///         Curve parameters (exponential bonding curve):
-///           K = 21,000,000 ascend  (asymptotic supply cap)
-///           S = 500 ETH            (curve scale factor)
+///           K = 100,000,000 ascend  (asymptotic supply cap)
+///           S = 1000 ETH            (curve scale factor)
 ///         Fee parameters:
 ///           MINT_FEE_BPS = 70   (0.7% on mint, 50 bps reserve + 20 bps tile)
 ///           BURN_FEE_BPS = 70   (0.7% on burn, same split)
 ///         Anti-MEV:
-///           MAX_MINT_PER_TX = 5 ETH    (per-tx vacuum cap)
+///           MAX_MINT_PER_TX = 3.5 ETH    (per-tx vacuum cap)
 ///           same-block burn-after-mint reverts (anti-flash-loan)
 contract AscendHookV3 is BaseHook {
     using PoolIdLibrary for PoolKey;
@@ -62,14 +62,14 @@ contract AscendHookV3 is BaseHook {
     /// @notice Asymptotic supply cap. The curve makes minting beyond
     ///         this point increasingly expensive; effective reachable
     ///         supply is bounded near this value.
-    uint256 public constant K = 21_000_000 * 1e18;
+    uint256 public constant K = 100_000_000 * 1e18;
 
     /// @notice Curve scale factor. Higher S → flatter curve.
-    ///         Testnet calibration: S = 0.3 ETH so the curve reaches
+    ///         Mainnet calibration: S = 1000 ETH for slow
     ///         meaningful USD prices ($1+) within a ~3 ETH cumulative
-    ///         budget. Mainnet would use S = 500 (the standard choice) to
+    ///         budget. This S is sized to
     ///         spread mining across a much larger ETH budget.
-    uint256 public constant S = 0.3 ether;
+    uint256 public constant S = 1000 ether;
 
     /// @notice Total mint fee in basis points (0.7%).
     uint256 public constant MINT_FEE_BPS = 70;
@@ -115,7 +115,7 @@ contract AscendHookV3 is BaseHook {
     uint256 public constant FEE_DENOM = 10_000;
 
     /// @notice Per-tx mint cap to prevent vacuum-mints.
-    uint256 public constant MAX_MINT_PER_TX = 5 ether;
+    uint256 public constant MAX_MINT_PER_TX = 3.5 ether;
 
     // -----------------------------------------------------------------
     // immutable state

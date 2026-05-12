@@ -3,18 +3,18 @@
  *
  *   v3 mechanics:
  *     - exponential bonding curve: q(e) = K · (1 − e^(−e/S))
- *     - K = 21M (asymptotic supply cap), S = 500 ETH (curve scale)
+ *     - K = 100M (asymptotic supply cap), S = 1000 ETH (curve scale)
  *     - mint: ETH → ascend, advances ethCum by (ethIn − fee)
  *     - burn: ascend → ETH, decreases supply, ethOut = (Δe)·(1 − fee)
  *     - 0.7% fee on each side, split: 5/7 reserve, 2/7 TileEngine
- *     - max 5 ETH per mint tx (anti-vacuum)
+ *     - max 3.5 ETH per mint tx (anti-vacuum)
  *     - same-block burn-after-mint reverts (anti-flash-loan)
  *
  *   typical units: floats in ETH-units / ascend-units (not wei).
  */
 
-export const K = 21_000_000;        // supply cap (ascend, asymptotic)
-export const S = 0.3;               // curve scale (ETH) — testnet-calibrated for $1 reachability
+export const K = 100_000_000;       // supply cap (ascend, asymptotic — 100M, BTC-class supply on a slower curve)
+export const S = 1000;              // curve scale (ETH) — mainnet-sized; 5*S = 5000 ETH for ~99% saturation
 
 /// USD/ETH for display purposes only (chart labels, tooltips). Override
 /// at deploy time via NEXT_PUBLIC_USD_PER_ETH; default to a recent
@@ -30,7 +30,7 @@ export const TILE_FEE_BPS = 20;     // 0.2%
 export const SURPLUS_BPS = 300;     // 3% of post-fee mint to surplusReserve
 export const BURN_TOKEN_FEE_BPS = 100; // 1% token-side burn fee
 export const FEE_DENOM = 10_000;
-export const MAX_MINT_PER_TX = 5;   // ETH
+export const MAX_MINT_PER_TX = 3.5; // ETH per-tx cap (anti-vacuum)
 
 export const MINT_FEE_RATE = MINT_FEE_BPS / FEE_DENOM;   // 0.007
 export const BURN_FEE_RATE = BURN_FEE_BPS / FEE_DENOM;   // 0.007

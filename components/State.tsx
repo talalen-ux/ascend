@@ -113,7 +113,7 @@ export function State() {
           label="FDV"
           value={fmtUsd(fdvEth, ethUsd)}
           sub={fmtEthShort(fdvEth)}
-          hint="price × 21m cap · notional"
+          hint="price × 100m cap · notional"
         />
       </motion.div>
     </section>

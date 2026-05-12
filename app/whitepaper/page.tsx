@@ -99,7 +99,7 @@ function BondingCurveChart() {
             strokeOpacity={0.35}
             strokeDasharray="4 4"
             label={{
-              value: "21m cap (never reached)",
+              value: "100m cap (never reached)",
               position: "insideTopRight",
               fill: COLORS.bone,
               fontSize: 9,
@@ -285,7 +285,7 @@ export default function Whitepaper() {
         <p>
           You stumble onto an Ethereum contract. It accepts ETH. It mints
           something called <strong className="text-bone">ascend</strong> in
-          return. The total supply is capped at <Strong>21,000,000</Strong>.
+          return. The total supply is capped at <Strong>100,000,000</Strong>.
           Same number Bitcoin chose for itself. Probably not a coincidence.
         </p>
         <p>
@@ -309,7 +309,7 @@ export default function Whitepaper() {
           You send <Strong>0.1 ETH</Strong>. The machine doesn&rsquo;t just hand you
           a flat number of tokens. It runs your ETH through this curve:
         </p>
-        <Formula>supply = 21,000,000 × (1 − e^(−ETH_deposited / S))</Formula>
+        <Formula>supply = 100,000,000 × (1 − e^(−ETH_deposited / S))</Formula>
         <p>Don&rsquo;t worry about the math — here&rsquo;s what it looks like:</p>
 
         <BondingCurveChart />
@@ -428,16 +428,16 @@ export default function Whitepaper() {
 
       <Chapter num="5" title="the asymptote">
         <p>
-          Bitcoin&rsquo;s 21M cap isn&rsquo;t a hard-coded limit. It&rsquo;s the sum of
+          Bitcoin&rsquo;s 100M cap isn&rsquo;t a hard-coded limit. It&rsquo;s the sum of
           an infinite geometric series of block rewards: 50 + 25 + 12.5 + ...
-          The math itself converges to 21M and never goes past.
+          The math itself converges to 100M and never goes past.
         </p>
         <p>
           ascend works the same way. The curve{" "}
-          <Code>q(e) = K × (1 − e^(−e/S))</Code> approaches 21M from below,
+          <Code>q(e) = K × (1 − e^(−e/S))</Code> approaches 100M from below,
           asymptotically. After <Strong>5 × S</Strong> of ETH has been deposited,
           supply reaches 99.3% of cap. After 10 × S, it&rsquo;s 99.9995%. But
-          never quite 21,000,000.
+          never quite 100,000,000.
         </p>
         <p>
           The last ascend can never be minted. Eventually the curve flattens
@@ -500,7 +500,7 @@ export default function Whitepaper() {
         <p>
           That&rsquo;s the whole adventure. Mine when the curve is shallow.
           Hold past the penalty. Claim your tiles. Watch the surplus grow.
-          And when the curve eventually saturates near 21M, you&rsquo;ll either
+          And when the curve eventually saturates near 100M, you&rsquo;ll either
           have been part of it from the start, or you&rsquo;ll be a late buyer
           paying premium prices to early miners who came in cheap.
         </p>

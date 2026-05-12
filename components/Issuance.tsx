@@ -59,7 +59,7 @@ export function Issuance() {
 
   // Build ascend issuance bins as discrete ETH windows. Each bar's height
   // is the actual ascend ISSUED in that window (= ∫ marginal rate dETH),
-  // not the instantaneous rate. Sums to ~K=21m across all bins, which is
+  // not the instantaneous rate. Sums to ~K=100m across all bins, which is
   // the asymptote we visually claim.
   const STEP = S / 2;
   const ASCEND = Array.from({ length: 8 }, (_, i) => {
@@ -204,7 +204,7 @@ export function Issuance() {
             </ResponsiveContainer>
           </div>
           <p className="mt-1 text-center text-[11px] text-ash">
-            cumulative eth bins · 0.15 Ξ each
+            cumulative eth bins · {STEP.toFixed(STEP < 1 ? 2 : 0)} Ξ each
           </p>
         </div>
       </div>
@@ -212,8 +212,8 @@ export function Issuance() {
       <p className="mt-4 text-[11px] leading-relaxed text-ash">
         bitcoin issues in discrete halving epochs (50, 25, 12.5 btc per block,
         every ~4 years; subsidy reaches zero around 2140). ascend issues
-        continuously: each bar shows ascend minted in that 0.15 Ξ window. bars
-        sum to <span className="text-bone">~21m</span>, the asymptote neither
+        continuously: each bar shows ascend minted in that {STEP.toFixed(STEP < 1 ? 2 : 0)} Ξ window. bars
+        sum to <span className="text-bone">~100m</span>, the asymptote neither
         chain ever reaches.
       </p>
     </motion.section>
