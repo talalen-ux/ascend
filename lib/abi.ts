@@ -100,7 +100,7 @@ export const ASCEND_HOOK_V2_ABI = [
   { type: "function", name: "rebalance", stateMutability: "nonpayable", inputs: [], outputs: [] },
 ] as const;
 
-/// V3 hook ABI — Sato-style bonding curve. Surface the dapp reads.
+/// V3 hook ABI — exponential bonding curve. Surface the dapp reads.
 export const ASCEND_HOOK_V3_ABI = [
   { type: "function", name: "ascend", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "tileEngine", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
@@ -133,7 +133,7 @@ export const ASCEND_HOOK_V3_ABI = [
     type: "function",
     name: "quoteBurn",
     stateMutability: "view",
-    inputs: [{ type: "uint256", name: "satoIn" }],
+    inputs: [{ type: "uint256", name: "ascendIn" }],
     outputs: [{ type: "uint256", name: "ethOut" }, { type: "uint256", name: "totalFee" }],
   },
   { type: "function", name: "sweep", stateMutability: "nonpayable", inputs: [], outputs: [] },
@@ -155,7 +155,7 @@ export const ASCEND_HOOK_V3_ABI = [
     name: "Burn",
     inputs: [
       { type: "address", name: "sender", indexed: true },
-      { type: "uint256", name: "satoIn" },
+      { type: "uint256", name: "ascendIn" },
       { type: "uint256", name: "totalFee" },
       { type: "uint256", name: "tileShare" },
       { type: "uint256", name: "ethOut" },

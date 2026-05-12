@@ -67,13 +67,13 @@ function Cell({
   );
 }
 
-export function SatoData() {
+export function AscendData() {
   const state = useAscendState();
   const act = useActivity();
   const ethUsd = useEthPrice();
 
   const priceMint = marginalMintPriceAt(state.ethCum);
-  // Sato monotone floor — conceptual long-term anchor. Read from chain.
+  // monotone floor — conceptual long-term anchor. Read from chain.
   const priceFloorEth = state.floorEth;
   // Live burn payout per ascend at tier-1 (90% payout, fresh wallet) —
   // includes 1% token fee, 0.7% protocol fee, block-age penalty, bonus.
@@ -82,7 +82,7 @@ export function SatoData() {
   const fdvEth = priceMint * K;
   const circMcapEth = priceMint * state.supply;
 
-  const ethBackingPerSato = state.supply > 0 ? state.reserveEth / state.supply : 0;
+  const ethBackingPerAscend = state.supply > 0 ? state.reserveEth / state.supply : 0;
 
   return (
     <motion.section
@@ -164,7 +164,7 @@ export function SatoData() {
             value={fmtUsd(state.reserveEth, ethUsd)}
             sub={`${fmtEth(state.reserveEth, 4)} Ξ`}
           />
-          <Cell label="eth/ascend" value={fmtUsd(ethBackingPerSato, ethUsd)} />
+          <Cell label="eth/ascend" value={fmtUsd(ethBackingPerAscend, ethUsd)} />
           <Cell
             label="burnt fees"
             value={act.isLoading ? "…" : `${fmtEth(act.burntFeesEth, 4)} Ξ`}
@@ -203,7 +203,7 @@ export function SatoData() {
           />
           <Cell
             label="model"
-            value="Sato + 3% surplus"
+            value="curve + 3% surplus"
             sub="smooth penalty 0–500 blk"
           />
         </div>

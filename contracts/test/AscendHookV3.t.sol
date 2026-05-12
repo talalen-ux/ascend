@@ -207,7 +207,7 @@ contract AscendHookV3Test is Test, Deployers {
     }
 
     // -----------------------------------------------------------------
-    // floor monotone non-decreasing under burns (Sato property).
+    // floor monotone non-decreasing under burns (monotone-floor property).
     // mintedFair stays frozen — burns only shrink currentSupply, so the
     // (mintedFair / currentSupply) correction grows and floor lifts.
     // -----------------------------------------------------------------
@@ -223,7 +223,7 @@ contract AscendHookV3Test is Test, Deployers {
         uint256 lastFloor = hook.floor();
 
         // Burn many small chunks well within the solvency envelope. The
-        // Sato monotone-floor formula can exceed reserve for very large
+        // monotone-floor formula can exceed reserve for very large
         // burns (>~30-40% of supply at once); modest churn is fine.
         vm.prank(alice, alice);
         ascend.approve(address(router), minted);
@@ -235,7 +235,7 @@ contract AscendHookV3Test is Test, Deployers {
             router.sell(chunk, 0, alice);
 
             uint256 currentFloor = hook.floor();
-            assertGe(currentFloor, lastFloor, "floor decreased on burn (Sato invariant violated)");
+            assertGe(currentFloor, lastFloor, "floor decreased on burn (monotone invariant violated)");
             lastFloor = currentFloor;
 
             // mintedFair and cumulativeEthIn must NOT change during burns

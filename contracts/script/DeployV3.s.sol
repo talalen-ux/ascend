@@ -14,7 +14,7 @@ import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {AscendHookV3} from "../src/AscendHookV3.sol";
 import {AscendRouterV3} from "../src/AscendRouterV3.sol";
 
-/// @notice Deploy the Sato-style v3 stack:
+/// @notice Deploy the exponential-curve v3 stack:
 ///           1. AscendHookV3 (CREATE2 via canonical deployer with mined salt)
 ///           2. Initialize the (ETH, ascend) V4 pool — no LP needed; the
 ///              hook handles all swap math via BeforeSwapDelta

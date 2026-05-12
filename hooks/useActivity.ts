@@ -19,7 +19,7 @@ const MINT_EVENT = parseAbiItem(
   "event Mint(address indexed sender, uint256 ethIn, uint256 totalFee, uint256 tileShare, uint256 mintAmount, uint256 newEthCum, uint256 newSupply)"
 );
 const BURN_EVENT = parseAbiItem(
-  "event Burn(address indexed sender, uint256 satoIn, uint256 totalFee, uint256 tileShare, uint256 ethOut, uint256 newEthCum, uint256 newSupply)"
+  "event Burn(address indexed sender, uint256 ascendIn, uint256 totalFee, uint256 tileShare, uint256 ethOut, uint256 newEthCum, uint256 newSupply)"
 );
 const TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)"
@@ -128,7 +128,7 @@ async function fetchActivity(client: PublicClient): Promise<Activity> {
   let totalBurnTile = 0n;
   for (const log of burnLogs) {
     volBurn += log.args.ethOut ?? 0n;
-    burnFlow += log.args.satoIn ?? 0n;
+    burnFlow += log.args.ascendIn ?? 0n;
     totalBurnFee += log.args.totalFee ?? 0n;
     totalBurnTile += log.args.tileShare ?? 0n;
   }

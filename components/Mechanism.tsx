@@ -6,7 +6,7 @@ const properties = [
   {
     title: "Bonding curve, not LP",
     body:
-      "ascend issues against a Sato-style exponential curve — q(e) = K·(1−e^(−e/S)) — through a Uniswap V4 hook. supply starts at 0; every mint creates new tokens, every burn destroys them. there is no LP position anyone owns or can withdraw — the hook is the issuer, the reserve is its balance.",
+      "ascend issues against a exponential-curve exponential curve — q(e) = K·(1−e^(−e/S)) — through a Uniswap V4 hook. supply starts at 0; every mint creates new tokens, every burn destroys them. there is no LP position anyone owns or can withdraw — the hook is the issuer, the reserve is its balance.",
   },
   {
     title: "3% surplus on every mint",
@@ -72,7 +72,7 @@ export function Mechanism() {
           impatient flippers fund the patient holders.
         </h2>
         <p className="mt-4 text-[14px] leading-relaxed text-ash">
-          ascend takes the Sato bonding curve and adds four upgrades that
+          ascend takes the exponential bonding curve and adds four upgrades that
           structurally bias the protocol toward long-term participation:
           mathematically symmetric forward/inverse curves, a 3% backing
           surplus on every mint, a continuous block-age burn penalty,

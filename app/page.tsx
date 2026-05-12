@@ -1,7 +1,7 @@
 import { Hero } from "@/components/Hero";
 import { State } from "@/components/State";
 import { Curve } from "@/components/Curve";
-import { SatoData } from "@/components/SatoData";
+import { AscendData } from "@/components/AscendData";
 import { Issuance } from "@/components/Issuance";
 import { Trade } from "@/components/Trade";
 import { Mechanism } from "@/components/Mechanism";
@@ -24,7 +24,7 @@ export default function Page() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Trade />
-        <SatoData />
+        <AscendData />
       </div>
 
       <Issuance />

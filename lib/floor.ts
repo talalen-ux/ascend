@@ -1,5 +1,5 @@
 /**
- * Off-chain mirror of the v3 bonding-curve math (Sato-style).
+ * Off-chain mirror of the v3 bonding-curve math (exponential-curve).
  *
  * Re-exports lib/floor_v3.ts under the names the existing components
  * already consume (`quoteBuy`, `quoteSell`, `floorOf`, `priceOf`,
@@ -148,7 +148,7 @@ export function simulateFloor(
       }
     } else if (s.supply > 0) {
       // burn a small fraction so the simulation can keep running. mintedFair
-      // is FROZEN on burn (Sato-style) — only supply shrinks.
+      // is FROZEN on burn (exponential-curve) — only supply shrinks.
       const burnAmount = s.supply * sellFraction * 0.01;
       const q = quoteBurnV3(s, burnAmount);
       if (q) {

@@ -1,5 +1,5 @@
 /**
- * Off-chain mirror of the v3 bonding-curve math (Sato-style).
+ * Off-chain mirror of the v3 bonding-curve math (exponential-curve).
  *
  *   v3 mechanics:
  *     - exponential bonding curve: q(e) = K · (1 − e^(−e/S))
@@ -62,7 +62,7 @@ export const PENALTY_MILESTONES = [
 
 export interface StateV3 {
   /// Net cumulative ETH paid in over all mints (after fees+surplus). Monotone
-  /// non-decreasing — frozen on burns (Sato-style).
+  /// non-decreasing — frozen on burns (exponential-curve).
   ethCum: number;
   /// Actual ERC-20 supply (= mintedFair − sumOfBurns). Goes both ways.
   supply: number;
@@ -93,7 +93,7 @@ export function marginalBurnPriceAt(q: number): number {
   return (S / (K - q)) * (1 - BURN_FEE_RATE);
 }
 
-/** Floor (Sato-style monotone). Per-token redemption price at the
+/** Floor (exponential-curve monotone). Per-token redemption price at the
  *  current state. mintedFair is frozen across burns, so this only
  *  rises as either mintedFair grows (mints) or supply shrinks (burns).
  *      = (S / (K − mintedFair)) · (mintedFair / supply) · (1 − burnFee) */
@@ -114,7 +114,7 @@ export function priceOf(s: StateV3): number {
  * 0.7% protocol fee, the block-age penalty (defaults to tier-1 / 90%
  * payout), and any active reserve bonus.
  *
- * Distinct from `floorOf()` (Sato monotone aggregate). `floorOf` is the
+ * Distinct from `floorOf()` (monotone aggregate). `floorOf` is the
  * per-token average if the entire supply were liquidated against the
  * frozen mintedFair — a conceptual long-term floor that only ever rises.
  * `livePerTokenBurnAt` is what a real burn pays at this instant.
@@ -206,9 +206,9 @@ export function penaltyMultBps(holdAgeBlocks: number): number {
 
 /**
  * Quote a burn of `ascendIn`. Mirrors AscendHookV3.quoteBurn exactly:
- *   satoBurnFee = ascendIn · BURN_TOKEN_FEE_BPS         (1% destroyed)
- *   satoToCurve = ascendIn − satoBurnFee
- *   deltaE      = S · ln((K − mF + satoToCurve) / (K − mF))   (V3 inverse)
+ *   ascendBurnFee = ascendIn · BURN_TOKEN_FEE_BPS         (1% destroyed)
+ *   ascendToCurve = ascendIn − ascendBurnFee
+ *   deltaE      = S · ln((K − mF + ascendToCurve) / (K − mF))   (V3 inverse)
  *   totalFee    = deltaE · BURN_FEE_BPS                       (0.7%)
  *   basePayout  = deltaE − totalFee
  *   grossPayout = basePayout · penaltyMultBps(holdAge)        (block-age)
@@ -227,12 +227,12 @@ export function quoteBurnV3(
   const mF = s.mintedFair ?? curveSupplyAt(s.ethCum);
   if (mF === 0 || mF >= K) return null;
 
-  const satoBurnFee = ascendIn * BURN_TOKEN_FEE_RATE;
-  const satoToCurve = ascendIn - satoBurnFee;
-  if (satoToCurve <= 0) return null;
+  const ascendBurnFee = ascendIn * BURN_TOKEN_FEE_RATE;
+  const ascendToCurve = ascendIn - ascendBurnFee;
+  if (ascendToCurve <= 0) return null;
 
   // V3 inverse curve, frozen mF.
-  const deltaE = S * Math.log((K - mF + satoToCurve) / (K - mF));
+  const deltaE = S * Math.log((K - mF + ascendToCurve) / (K - mF));
   const totalFee = deltaE * BURN_FEE_RATE;
   const tileShare = deltaE * (TILE_FEE_BPS / FEE_DENOM);
   const reserveShare = totalFee - tileShare;
@@ -266,7 +266,7 @@ export function quoteBurnV3(
     fee: totalFee,
     tilePortion: tileShare,
     reservePortion: reserveShare,
-    tokenBurnFee: satoBurnFee,
+    tokenBurnFee: ascendBurnFee,
     penalty: penaltyTaken,
     bonus: bonusAmount,
     payoutMultBps: multBps,

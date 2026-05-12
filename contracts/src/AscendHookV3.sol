@@ -22,7 +22,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ascend} from "./Ascend.sol";
 import {TileEngine} from "./TileEngine.sol";
 
-/// @title  AscendHookV3 — Sato-style bonding curve issuer on Uniswap V4.
+/// @title  AscendHookV3 — exponential-curve bonding curve issuer on Uniswap V4.
 ///
 /// @notice Supply starts at 0; mint creates new ascend per the curve
 ///         q(e) = K · (1 − e^(−e/S)). Burn redeems against the inverse
@@ -35,12 +35,12 @@ import {TileEngine} from "./TileEngine.sol";
 ///         the pool exists as a routing/charting surface only.
 ///
 /// @dev    Reserve is held as ERC-6909 currency0 (ETH) claim tokens
-///         with the PoolManager. Sato accumulating from burns is
+///         with the PoolManager. Token accumulating from burns is
 ///         held as currency1 (ascend) claim tokens; the public
 ///         `sweep()` periodically burns those tokens from circulation
 ///         and routes the tile share to TileEngine.
 ///
-///         Curve parameters (mirrored from Sato):
+///         Curve parameters (exponential bonding curve):
 ///           K = 21,000,000 ascend  (asymptotic supply cap)
 ///           S = 500 ETH            (curve scale factor)
 ///         Fee parameters:
@@ -67,7 +67,7 @@ contract AscendHookV3 is BaseHook {
     /// @notice Curve scale factor. Higher S → flatter curve.
     ///         Testnet calibration: S = 0.3 ETH so the curve reaches
     ///         meaningful USD prices ($1+) within a ~3 ETH cumulative
-    ///         budget. Mainnet would use S = 500 (Sato's choice) to
+    ///         budget. Mainnet would use S = 500 (the standard choice) to
     ///         spread mining across a much larger ETH budget.
     uint256 public constant S = 0.3 ether;
 
@@ -208,14 +208,14 @@ contract AscendHookV3 is BaseHook {
     );
     event Burn(
         address indexed sender,
-        uint256 satoIn,
+        uint256 ascendIn,
         uint256 totalFee,
         uint256 tileShare,
         uint256 ethOut,
         uint256 newEthCum,
         uint256 newSupply
     );
-    event Swept(uint256 satoBurned, uint256 ethToTile, uint256 newReserve);
+    event Swept(uint256 ascendBurned, uint256 ethToTile, uint256 newReserve);
     event ClaimMint(address indexed recipient, uint256 ethIn, uint256 mintAmount);
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
@@ -371,12 +371,12 @@ contract AscendHookV3 is BaseHook {
     // burn — ascend → ETH, redeemed against the inverse curve
     // -----------------------------------------------------------------
 
-    function _doBurn(uint256 satoIn) internal returns (bytes4, BeforeSwapDelta, uint24) {
-        if (satoIn == 0) revert MintTooSmall();
+    function _doBurn(uint256 ascendIn) internal returns (bytes4, BeforeSwapDelta, uint24) {
+        if (ascendIn == 0) revert MintTooSmall();
         if (lastMintBlock[tx.origin] == block.number) revert SameBlockBurnAfterMint();
-        if (satoIn >= currentSupply) revert CurveExhausted();
+        if (ascendIn >= currentSupply) revert CurveExhausted();
 
-        // Sato-style burn. mintedFair (= q(cumulativeEthIn)) is FROZEN
+        // exponential-curve burn. mintedFair (= q(cumulativeEthIn)) is FROZEN
         // during burns — burns don't reverse the curve. Only currentSupply
         // shrinks. The displayed floor uses (mF/supply), so it monotonically
         // rises across both mints and burns.
@@ -392,11 +392,11 @@ contract AscendHookV3 is BaseHook {
         if (mF == 0 || mF >= K) revert CurveExhausted();
 
         // Token-side burn fee: 1% of input destroyed outright.
-        uint256 satoBurnFee = (satoIn * BURN_TOKEN_FEE_BPS) / FEE_DENOM;
-        uint256 satoToCurve = satoIn - satoBurnFee;
-        if (satoToCurve == 0) revert MintTooSmall();
+        uint256 ascendBurnFee = (ascendIn * BURN_TOKEN_FEE_BPS) / FEE_DENOM;
+        uint256 ascendToCurve = ascendIn - ascendBurnFee;
+        if (ascendToCurve == 0) revert MintTooSmall();
 
-        uint256 deltaE = _curveInverse(mF, satoToCurve);
+        uint256 deltaE = _curveInverse(mF, ascendToCurve);
         uint256 totalFee = (deltaE * BURN_FEE_BPS) / FEE_DENOM;
         uint256 tileShare = (deltaE * TILE_FEE_BPS) / FEE_DENOM;
         if (tileShare > totalFee) tileShare = totalFee;
@@ -425,37 +425,37 @@ contract AscendHookV3 is BaseHook {
         if (ethOut > reserveEthInternal()) revert InsufficientReserve();
 
         // State updates
-        currentSupply -= satoIn;
+        currentSupply -= ascendIn;
         tileAccrual += tileShare;
         // Surplus accounting: gain from penalty, lose from bonus.
         surplusReserve = surplusReserve + penaltyTaken - bonusAmount;
 
         // V4 plumbing:
         // 1. Take the user's ascend as currency1 claim tokens. PM's actual
-        //    sato balance will rise when the swapper settles after swap;
+        //    ascend balance will rise when the swapper settles after swap;
         //    these claims then represent burnable supply — `sweep()`
         //    later actually burns the ERC-20 supply.
-        //    Effect: hook currency1 delta −= satoIn, claims += satoIn.
-        poolManager.mint(address(this), poolKey.currency1.toId(), satoIn);
+        //    Effect: hook currency1 delta −= ascendIn, claims += ascendIn.
+        poolManager.mint(address(this), poolKey.currency1.toId(), ascendIn);
 
         // 2. Burn currency0 claims to credit the hook's currency0 delta
         //    by ethOut. Effect: hook currency0 delta += ethOut, claims −= ethOut.
         //    The BeforeSwapDelta below subtracts ethOut, netting to 0.
         poolManager.burn(address(this), _ETH.toId(), ethOut);
 
-        emit Burn(tx.origin, satoIn, totalFee, tileShare, ethOut, cumulativeEthIn, currentSupply);
+        emit Burn(tx.origin, ascendIn, totalFee, tileShare, ethOut, cumulativeEthIn, currentSupply);
 
-        // BeforeSwapDelta(+satoIn specified, −ethOut unspecified):
-        //  • specified += satoIn → AMM amountToSwap = 0
+        // BeforeSwapDelta(+ascendIn specified, −ethOut unspecified):
+        //  • specified += ascendIn → AMM amountToSwap = 0
         //  • hook delta += (zeroForOne=false → swap order)
         //    hookDelta currency0 = unspecified = −ethOut
-        //    hookDelta currency1 = specified   = +satoIn
+        //    hookDelta currency1 = specified   = +ascendIn
         //    combined with prior burn-claim (+ethOut currency0) and
-        //    mint-claim (−satoIn currency1): hook deltas net to 0 ✓
-        //  • caller swapDelta = 0 − hookDelta = (+ethOut, −satoIn)
+        //    mint-claim (−ascendIn currency1): hook deltas net to 0 ✓
+        //  • caller swapDelta = 0 − hookDelta = (+ethOut, −ascendIn)
         return (
             BaseHook.beforeSwap.selector,
-            toBeforeSwapDelta(satoIn.toInt128(), -int256(ethOut).toInt128()),
+            toBeforeSwapDelta(ascendIn.toInt128(), -int256(ethOut).toInt128()),
             0
         );
     }
@@ -479,11 +479,11 @@ contract AscendHookV3 is BaseHook {
         SweepData memory sd = abi.decode(data, (SweepData));
 
         // 1. Burn accumulated ascend claims and remove from supply.
-        uint256 satoClaims = poolManager.balanceOf(address(this), poolKey.currency1.toId());
-        if (satoClaims > 0) {
-            poolManager.burn(address(this), poolKey.currency1.toId(), satoClaims);
-            poolManager.take(poolKey.currency1, address(this), satoClaims);
-            ascend.burn(address(this), satoClaims);
+        uint256 ascendClaims = poolManager.balanceOf(address(this), poolKey.currency1.toId());
+        if (ascendClaims > 0) {
+            poolManager.burn(address(this), poolKey.currency1.toId(), ascendClaims);
+            poolManager.take(poolKey.currency1, address(this), ascendClaims);
+            ascend.burn(address(this), ascendClaims);
         }
 
         // 2. Route tile share to TileEngine.
@@ -502,7 +502,7 @@ contract AscendHookV3 is BaseHook {
             }
         }
 
-        emit Swept(satoClaims, ethToTile, reserveEthInternal());
+        emit Swept(ascendClaims, ethToTile, reserveEthInternal());
         return "";
     }
 
@@ -618,7 +618,7 @@ contract AscendHookV3 is BaseHook {
         return fwd > mintedFair ? fwd - mintedFair : 0;
     }
 
-    /// @notice Per-token burn redemption price (Sato formula). Floor only
+    /// @notice Per-token burn redemption price (the monotone-floor formula). Floor only
     ///         goes UP under both mints (mintedFair grows) and burns
     ///         (currentSupply shrinks → ratio correction grows).
     ///         = (S / (K − mF)) · (mF / currentSupply) · (1 − feeBps/10000)
@@ -655,18 +655,18 @@ contract AscendHookV3 is BaseHook {
         mintAmount = _curveForward(cumulativeEthIn, cumulativeEthIn + ethToCurve);
     }
 
-    /// @notice Quote a burn of `satoIn` for `burner` — applies the 1%
+    /// @notice Quote a burn of `ascendIn` for `burner` — applies the 1%
     ///         token-side fee, the curve-inverse, the protocol fee, the
     ///         block-age penalty (using `burner`'s weightedReceiveBlock),
     ///         and the reserve-aware bonus.
-    function quoteBurn(uint256 satoIn, address burner) external view returns (uint256 ethOut, uint256 totalFee) {
-        if (satoIn == 0 || satoIn >= currentSupply) return (0, 0);
+    function quoteBurn(uint256 ascendIn, address burner) external view returns (uint256 ethOut, uint256 totalFee) {
+        if (ascendIn == 0 || ascendIn >= currentSupply) return (0, 0);
         uint256 mF = mintedFair;
         if (mF == 0 || mF >= K) return (0, 0);
-        uint256 satoBurnFee = (satoIn * BURN_TOKEN_FEE_BPS) / FEE_DENOM;
-        uint256 satoToCurve = satoIn - satoBurnFee;
-        if (satoToCurve == 0) return (0, 0);
-        uint256 deltaE = _curveInverse(mF, satoToCurve);
+        uint256 ascendBurnFee = (ascendIn * BURN_TOKEN_FEE_BPS) / FEE_DENOM;
+        uint256 ascendToCurve = ascendIn - ascendBurnFee;
+        if (ascendToCurve == 0) return (0, 0);
+        uint256 deltaE = _curveInverse(mF, ascendToCurve);
         totalFee = (deltaE * BURN_FEE_BPS) / FEE_DENOM;
         uint256 basePayout = deltaE - totalFee;
 
