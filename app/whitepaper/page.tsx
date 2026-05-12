@@ -579,67 +579,6 @@ export default function Whitepaper() {
           </p>
         </SubChapter>
 
-        <SubChapter title="parameters reference">
-          <Formula>
-            K   = 21,000,000 ascend  (asymptotic cap)
-            <br />
-            S   = {S} ETH         (curve scale — testnet)
-            <br />
-            MINT_FEE_BPS         = 70     (0.7%)
-            <br />
-            BURN_FEE_BPS         = 70     (0.7%)
-            <br />
-            BURN_TOKEN_FEE_BPS   = 100    (1% token-side, destroyed)
-            <br />
-            TILE_FEE_BPS         = 20     (0.2% portion of fee)
-            <br />
-            SURPLUS_BPS          = 300    (3% of post-fee → surplus)
-            <br />
-            MAX_MINT_PER_TX      = 5 ETH
-            <br />
-            BONUS_TRIGGER_BPS    = 1000   (10% surplus ratio gate)
-            <br />
-            MAX_BONUS_BPS        = 500    (5% bonus cap)
-            <br />
-            GRID_SIZE            = 144    (12×12)
-            <br />
-            EPOCH_LENGTH         = 24 hours
-            <br />
-            SELECTION_RATE_BPS   = 6800   (68% per epoch)
-            <br />
-            MIN_HOLDING          = 1 ascend
-          </Formula>
-        </SubChapter>
-
-        <SubChapter title="invariants (tested)">
-          <ul className="mt-2 list-disc space-y-1 pl-6">
-            <li>
-              <Code>test_floorIncreasesMonotonically_mintOnly</Code> — floor
-              only goes up across any sequence of mints
-            </li>
-            <li>
-              <Code>test_floorNeverDropsUnderBurns</Code> — floor only goes up
-              across any sequence of burns
-            </li>
-            <li>
-              <Code>test_cyclingIsUnprofitable</Code> — round-trip mint→burn
-              returns less than input
-            </li>
-            <li>
-              <Code>test_transferBypassIsClosed</Code> — sending to a fresh
-              wallet doesn&rsquo;t dodge penalty
-            </li>
-            <li>
-              <Code>test_largeBurnSolventUnderCurveTrueBurn</Code> — protocol
-              never goes underwater
-            </li>
-            <li>
-              <Code>test_claimTileFullFlow</Code> — tile claim routes through
-              curve correctly
-            </li>
-            <li>+ 20 more in the test suite. Total: 26 passing.</li>
-          </ul>
-        </SubChapter>
       </Chapter>
 
       <footer className="mt-20 border-t border-edge pt-8 text-[11px] leading-relaxed text-ash">
