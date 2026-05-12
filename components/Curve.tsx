@@ -30,7 +30,6 @@ import { ASCEND_HOOK_V3_ABI } from "@/lib/abi";
 import { ASCEND_HOOK_ADDRESS, CHAIN_ID, isConfigured } from "@/lib/config";
 import { useEthPrice } from "@/hooks/useEthPrice";
 import { useActivity } from "@/hooks/useActivity";
-import { EthIcon } from "@/components/EthIcon";
 
 const COLORS = {
   payout: "#c5ee47",   // ascend green — held payout
@@ -446,7 +445,7 @@ export function Curve() {
             <div className="flex items-baseline gap-3 text-ash">
               <span>
                 cumEth{" "}
-                <span className="text-bone">{state.ethCum.toFixed(3)} <EthIcon size={10} /></span>
+                <span className="text-bone">{state.ethCum.toFixed(3)} ETH</span>
               </span>
               <span>
                 progress{" "}
@@ -478,7 +477,7 @@ export function Curve() {
                 type="number"
                 domain={[0, S * 5]}
                 ticks={[0, S, 2 * S, 3 * S, 4 * S, 5 * S]}
-                tickFormatter={(v) => (v === 0 ? "0" : `${v.toFixed(2)} Ξ`)}
+                tickFormatter={(v) => (v === 0 ? "0" : `${v.toFixed(2)} ETH`)}
                 stroke={COLORS.ash}
                 fontSize={10}
                 tickLine={false}
@@ -510,7 +509,7 @@ export function Curve() {
                   fontSize: 11,
                   fontFamily: "var(--font-mono)",
                 }}
-                labelFormatter={(v: number) => `cumEth ${v.toFixed(3)} Ξ`}
+                labelFormatter={(v: number) => `cumEth ${v.toFixed(3)} ETH`}
                 formatter={(v: number, name: string) => {
                   if (name === "supply") return [fmtSupply(v, 2), "circulating"];
                   if (name === "burned") return [fmtSupply(v, 2), "burned"];

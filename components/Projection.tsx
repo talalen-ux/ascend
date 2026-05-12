@@ -107,7 +107,7 @@ export function Projection() {
               }}
               labelStyle={{ color: "#71717a" }}
               formatter={(v: number) => [
-                v < 1e-4 ? `${v.toExponential(4)} Ξ` : `${v.toFixed(8)} Ξ`,
+                v < 1e-4 ? `${v.toExponential(4)} ETH` : `${v.toFixed(8)} ETH`,
                 "floor",
               ]}
             />

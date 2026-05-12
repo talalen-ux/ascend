@@ -21,7 +21,6 @@ import {
   MINT_FEE_RATE,
   SURPLUS_RATE,
 } from "@/lib/floor_v3";
-import { EthIcon } from "@/components/EthIcon";
 
 const C = {
   ascend: "#c5ee47",
@@ -80,9 +79,9 @@ export function Issuance() {
     ASCEND.length - 1,
   );
 
-  // "now" headline — the realized mint amount for a reference 1 Ξ input
+  // "now" headline — the realized mint amount for a reference 1 ETH input
   // at the current cumulative ETH. NOT the marginal slope (which would
-  // overstate by ~3× since the rate decays steeply over a 1 Ξ arc).
+  // overstate by ~3× since the rate decays steeply over a 1 ETH arc).
   // ethToCurve = 1 · (1 − mintFee) · (1 − surplus). Matches what a user
   // sees if they type 1 into the Mine panel.
   const REF_ETH = 1;
@@ -149,7 +148,7 @@ export function Issuance() {
           <div className="flex items-baseline justify-between text-[11px] font-mono">
             <span className="text-ash">ascend issuance</span>
             <span className="text-ash">
-              now: {fmtAsc(nowFor1Eth)} ascend / 1 <EthIcon size={10} />
+              now: {fmtAsc(nowFor1Eth)} ascend / 1 ETH
             </span>
           </div>
 
@@ -181,7 +180,7 @@ export function Issuance() {
                     fontFamily: "var(--font-mono)",
                   }}
                   labelFormatter={(_v, payload) =>
-                    payload && payload[0] ? `eth bin ${payload[0].payload.bin} Ξ` : ""
+                    payload && payload[0] ? `eth bin ${payload[0].payload.bin} ETH` : ""
                   }
                   formatter={(v: number) => [`${fmtAsc(v)} ascend`, "issued in bin"]}
                 />
@@ -205,7 +204,7 @@ export function Issuance() {
             </ResponsiveContainer>
           </div>
           <p className="mt-1 text-center text-[11px] text-ash">
-            cumulative eth bins · {STEP.toFixed(STEP < 1 ? 2 : 0)} <EthIcon size={10} /> each
+            cumulative eth bins · {STEP.toFixed(STEP < 1 ? 2 : 0)} ETH each
           </p>
         </div>
       </div>
@@ -213,7 +212,7 @@ export function Issuance() {
       <p className="mt-4 text-[11px] leading-relaxed text-ash">
         bitcoin issues in discrete halving epochs (50, 25, 12.5 btc per block,
         every ~4 years; subsidy reaches zero around 2140). ascend issues
-        continuously: each bar shows ascend minted in that {STEP.toFixed(STEP < 1 ? 2 : 0)} <EthIcon size={10} /> window. bars
+        continuously: each bar shows ascend minted in that {STEP.toFixed(STEP < 1 ? 2 : 0)} ETH window. bars
         sum to <span className="text-bone">~100m</span>, the asymptote neither
         chain ever reaches.
       </p>

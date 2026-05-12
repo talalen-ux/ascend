@@ -147,11 +147,11 @@ export function AscendData() {
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Valuation
           </h3>
-          <Cell label="mcap (fd)" value={fmtUsd(fdvEth, ethUsd)} sub={`${fmtEth(fdvEth, 2)} Ξ`} />
+          <Cell label="mcap (fd)" value={fmtUsd(fdvEth, ethUsd)} sub={`${fmtEth(fdvEth, 2)} ETH`} />
           <Cell
             label="mcap (circ)"
             value={fmtUsd(circMcapEth, ethUsd)}
-            sub={`${fmtEth(circMcapEth, 4)} Ξ`}
+            sub={`${fmtEth(circMcapEth, 4)} ETH`}
           />
         </div>
 
@@ -162,12 +162,12 @@ export function AscendData() {
           <Cell
             label="liquidity"
             value={fmtUsd(state.reserveEth, ethUsd)}
-            sub={`${fmtEth(state.reserveEth, 4)} Ξ`}
+            sub={`${fmtEth(state.reserveEth, 4)} ETH`}
           />
           <Cell label="eth/ascend" value={fmtUsd(ethBackingPerAscend, ethUsd)} />
           <Cell
             label="burnt fees"
-            value={act.isLoading ? "…" : `${fmtEth(act.burntFeesEth, 4)} Ξ`}
+            value={act.isLoading ? "…" : `${fmtEth(act.burntFeesEth, 4)} ETH`}
           />
         </div>
 
@@ -178,7 +178,7 @@ export function AscendData() {
           <Cell
             label="overcollat"
             value={`${(state.surplusRatioBps / 100).toFixed(2)}%`}
-            sub={`${fmtEth(state.surplusEth, 4)} Ξ`}
+            sub={`${fmtEth(state.surplusEth, 4)} ETH`}
             valueClass={
               state.surplusRatioBps >= 1000 ? "text-accent" : "text-bone"
             }
@@ -212,7 +212,7 @@ export function AscendData() {
           <h3 className="mb-1 text-[10px] font-medium uppercase tracking-widest2 text-ash">
             Activity 24h
           </h3>
-          <Cell label="vol" value={act.isLoading ? "…" : fmtUsd(act.vol24hEth, ethUsd)} sub={act.isLoading ? "" : `${fmtEth(act.vol24hEth, 4)} Ξ`} />
+          <Cell label="vol" value={act.isLoading ? "…" : fmtUsd(act.vol24hEth, ethUsd)} sub={act.isLoading ? "" : `${fmtEth(act.vol24hEth, 4)} ETH`} />
           <Cell label="txns" value={act.isLoading ? "…" : act.txns24h.toLocaleString()} />
           <Cell
             label="net flow"

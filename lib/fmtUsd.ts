@@ -19,12 +19,12 @@ export function fmtUsd(eth: number, rate: number): string {
   return "$" + (usd / 1e6).toFixed(2) + "m";
 }
 
-/// Compact Ξ formatting for the sub-line under USD primary displays.
+/// Compact ETH formatting for the sub-line under USD primary displays.
 export function fmtEthShort(eth: number): string {
   if (!Number.isFinite(eth)) return "—";
-  if (eth === 0) return "0 Ξ";
+  if (eth === 0) return "0 ETH";
   const abs = Math.abs(eth);
-  if (abs < 1e-4) return eth.toExponential(2) + " Ξ";
-  if (abs < 1) return eth.toFixed(6) + " Ξ";
-  return eth.toLocaleString(undefined, { maximumFractionDigits: 4 }) + " Ξ";
+  if (abs < 1e-4) return eth.toExponential(2) + " ETH";
+  if (abs < 1) return eth.toFixed(6) + " ETH";
+  return eth.toLocaleString(undefined, { maximumFractionDigits: 4 }) + " ETH";
 }

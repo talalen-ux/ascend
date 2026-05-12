@@ -609,10 +609,10 @@ function Stat({ label, value, hint }: { label: string; value: string; hint: stri
 }
 
 function fmtEth(n: number): string {
-  if (!Number.isFinite(n) || n === 0) return "0 Ξ";
-  if (n < 1e-4) return `${n.toExponential(2)} Ξ`;
-  if (n < 1) return `${n.toFixed(4)} Ξ`;
-  return `${n.toFixed(2)} Ξ`;
+  if (!Number.isFinite(n) || n === 0) return "0 ETH";
+  if (n < 1e-4) return `${n.toExponential(2)} ETH`;
+  if (n < 1) return `${n.toFixed(4)} ETH`;
+  return `${n.toFixed(2)} ETH`;
 }
 
 /** Compact ETH for tile-back-face: one or two characters of value */

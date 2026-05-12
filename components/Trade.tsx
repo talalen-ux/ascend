@@ -10,7 +10,6 @@ import { useEthPrice } from "@/hooks/useEthPrice";
 import { quoteBuy, quoteSell } from "@/lib/floor";
 import { MAX_MINT_PER_TX } from "@/lib/floor_v3";
 import { fmtUsd, fmtEthShort } from "@/lib/fmtUsd";
-import { EthIcon } from "@/components/EthIcon";
 
 export function Trade() {
   const state = useAscendState();
@@ -97,7 +96,7 @@ export function Trade() {
             placeholder="0.00"
           />
           <span className="font-mono text-sm text-ash">
-            {isBuy ? <EthIcon size={14} /> : "ascend"}
+            {isBuy ? "ETH" : "ascend"}
           </span>
         </div>
         {/* Anti-vacuum cap warning. The contract reverts above MAX_MINT_PER_TX
@@ -106,7 +105,7 @@ export function Trade() {
           <div className="mt-2 flex items-baseline gap-2 text-[11px] text-accent2">
             <span>⚠</span>
             <span>
-              max <span className="font-mono">{MAX_MINT_PER_TX} <EthIcon size={10} /></span> per mint
+              max <span className="font-mono">{MAX_MINT_PER_TX} ETH</span> per mint
               <span className="text-ash"> · split across multiple txs to mint more</span>
             </span>
           </div>
@@ -237,7 +236,7 @@ export function Trade() {
           : needsApproval
           ? "Approve ascend → router"
           : isBuy && Number(amount) > MAX_MINT_PER_TX
-          ? `Over ${MAX_MINT_PER_TX} Ξ cap`
+          ? `Over ${MAX_MINT_PER_TX} ETH cap`
           : side === "buy"
           ? "Mine ascend"
           : "Redeem ascend"}
@@ -271,7 +270,7 @@ function Row({
   muted,
   big,
   small,
-  /// Treat `value` as ETH and render USD-primary with Ξ underneath.
+  /// Treat `value` as ETH and render USD-primary with ETH underneath.
   /// Requires `rate` (ETH→USD).
   usd,
   rate,

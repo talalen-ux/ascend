@@ -61,7 +61,7 @@ function BondingCurveChart() {
             type="number"
             domain={[0, eMax]}
             ticks={[0, S, 2 * S, 3 * S, 4 * S, 5 * S]}
-            tickFormatter={(v) => (v === 0 ? "0" : `${v.toFixed(2)} Ξ`)}
+            tickFormatter={(v) => (v === 0 ? "0" : `${v.toFixed(2)} ETH`)}
             stroke={COLORS.ash}
             fontSize={10}
             tickLine={false}
