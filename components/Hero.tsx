@@ -94,9 +94,9 @@ export function Hero() {
         transition={{ duration: 0.7, delay: 0.32 }}
         className="relative mt-7 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-ash"
       >
-        <span>122M cap</span>
+        <span>100M cap</span>
         <span className="opacity-30">|</span>
-        <span>LP-backed floor</span>
+        <span>exponential bonding curve</span>
         <span className="opacity-30">|</span>
         <span>Ascension Grid rewards</span>
         <span className="opacity-30">|</span>
