@@ -21,3 +21,4 @@ backend/indexer/*.db-shm
 backend/indexer/*.db-wal
 
 tsconfig.tsbuildinfo
+contracts/.bootstrap-wallets.json
