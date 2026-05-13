@@ -285,8 +285,9 @@ export default function Whitepaper() {
         <p>
           You stumble onto an Ethereum contract. It accepts ETH. It mints
           something called <strong className="text-bone">ascend</strong> in
-          return. The total supply is capped at <Strong>100,000,000</Strong>.
-          Same number Bitcoin chose for itself. Probably not a coincidence.
+          return. The total supply is capped at <Strong>100,000,000</Strong> —
+          a hard mathematical ceiling the curve approaches but can never reach.
+          Same idea Bitcoin had with its 21M cap, scaled up.
         </p>
         <p>
           You poke around. There&rsquo;s no documentation about who runs it.
@@ -428,12 +429,12 @@ export default function Whitepaper() {
 
       <Chapter num="5" title="the asymptote">
         <p>
-          Bitcoin&rsquo;s 100M cap isn&rsquo;t a hard-coded limit. It&rsquo;s the sum of
-          an infinite geometric series of block rewards: 50 + 25 + 12.5 + ...
-          The math itself converges to 100M and never goes past.
+          Bitcoin&rsquo;s 21M cap isn&rsquo;t a hard-coded limit. It&rsquo;s the sum of
+          an infinite geometric series of halving block rewards: 50 + 25 + 12.5 + ...
+          The math itself converges to 21M and never goes past.
         </p>
         <p>
-          ascend works the same way. The curve{" "}
+          ascend uses the same idea, scaled to 100M. The curve{" "}
           <Code>q(e) = K × (1 − e^(−e/S))</Code> approaches 100M from below,
           asymptotically. After <Strong>5 × S</Strong> of ETH has been deposited,
           supply reaches 99.3% of cap. After 10 × S, it&rsquo;s 99.9995%. But
