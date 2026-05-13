@@ -3,7 +3,7 @@
  *
  *   v3 mechanics:
  *     - exponential bonding curve: q(e) = K · (1 − e^(−e/S))
- *     - K = 100M (asymptotic supply cap), S = 1000 ETH (curve scale)
+ *     - K = 100M (asymptotic supply cap), S = 20 ETH (curve scale)
  *     - mint: ETH → ascend, advances ethCum by (ethIn − fee)
  *     - burn: ascend → ETH, decreases supply, ethOut = (Δe)·(1 − fee)
  *     - 0.7% fee on each side, split: 5/7 reserve, 2/7 TileEngine
@@ -14,7 +14,7 @@
  */
 
 export const K = 100_000_000;       // supply cap (ascend, asymptotic — 100M, BTC-class supply on a slower curve)
-export const S = 1000;              // curve scale (ETH) — mainnet-sized; 5*S = 5000 ETH for ~99% saturation
+export const S = 20;                // curve scale (ETH) — compact-launch; 5*S = 100 ETH for ~99% saturation
 
 /// USD/ETH for display purposes only (chart labels, tooltips). Override
 /// at deploy time via NEXT_PUBLIC_USD_PER_ETH; default to a recent

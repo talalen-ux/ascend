@@ -42,7 +42,7 @@ import {TileEngine} from "./TileEngine.sol";
 ///
 ///         Curve parameters (exponential bonding curve):
 ///           K = 100,000,000 ascend  (asymptotic supply cap)
-///           S = 1000 ETH            (curve scale factor)
+///           S = 20 ETH            (curve scale factor)
 ///         Fee parameters:
 ///           MINT_FEE_BPS = 70   (0.7% on mint, 50 bps reserve + 20 bps tile)
 ///           BURN_FEE_BPS = 70   (0.7% on burn, same split)
@@ -65,11 +65,11 @@ contract AscendHookV3 is BaseHook {
     uint256 public constant K = 100_000_000 * 1e18;
 
     /// @notice Curve scale factor. Higher S → flatter curve.
-    ///         Mainnet calibration: S = 1000 ETH for slow
+    ///         Mainnet calibration: S = 20 ETH for slow
     ///         meaningful USD prices ($1+) within a ~3 ETH cumulative
     ///         budget. This S is sized to
     ///         spread mining across a much larger ETH budget.
-    uint256 public constant S = 1000 ether;
+    uint256 public constant S = 20 ether;
 
     /// @notice Total mint fee in basis points (0.7%).
     uint256 public constant MINT_FEE_BPS = 70;
