@@ -58,6 +58,12 @@ FORCE_FUND=${FORCE_FUND:-0}
 GAS_RESERVE_PCT=${GAS_RESERVE_PCT:-20}
 MIN_MINT_AMOUNT=${MIN_MINT_AMOUNT:-0.005}
 
+# Priority fee tip (gwei) for bootstrap mint txs. 5 gwei makes our txs
+# expensive to outbid for a low-cap launch; snipers chasing one
+# position would have to pay similarly or more, eating into their
+# upside (MAX_MINT_PER_TX = 3.5 ETH cap). Set to 0 to disable.
+PRIORITY_TIP_GWEI=${PRIORITY_TIP_GWEI:-5}
+
 # -------------------------------------------------------------------
 # Detect mode
 # -------------------------------------------------------------------
@@ -294,7 +300,17 @@ else
     # Mode B: serial mint in sorted order. Each tx waits for confirmation
     # so the next mint sees the post-trade curve. This guarantees the
     # low → high curve ordering the user asked for.
-    echo "Phase 2: minting in low → high order (serial, $ACTIVE_COUNT wallets)..."
+    #
+    # Sniper defence: each mint pays PRIORITY_TIP_GWEI as the EIP-1559
+    # priority tip. Snipers chasing the same curve position would need
+    # to outbid that tip; for a low-cap launch the gas cost vs. the
+    # MAX_MINT_PER_TX-capped upside makes this uneconomic for them.
+    PRIORITY_WEI=$(python3 -c "print(int($PRIORITY_TIP_GWEI * 1e9))")
+    PRIORITY_ARGS=()
+    if [[ "$PRIORITY_TIP_GWEI" != "0" ]]; then
+        PRIORITY_ARGS=(--priority-gas-price "$PRIORITY_WEI")
+    fi
+    echo "Phase 2: minting in low → high order (serial, $ACTIVE_COUNT wallets, $PRIORITY_TIP_GWEI gwei tip)..."
     FAILED=0
     for i in "${!MINT_ORDER_ADDR[@]}"; do
         ADDR="${MINT_ORDER_ADDR[$i]}"
@@ -306,7 +322,9 @@ else
         if $CAST send "$ASCEND_ROUTER" 'buy(uint256,address)(uint256)' 0 "$ADDR" \
             --value "$MINT_WEI" \
             --private-key "$KEY" \
-            --rpc-url "$RPC" > /tmp/bs_mint_$$.log 2>&1; then
+            --rpc-url "$RPC" \
+            ${PRIORITY_ARGS[@]+"${PRIORITY_ARGS[@]}"} \
+            > /tmp/bs_mint_$$.log 2>&1; then
             echo "ok"
         else
             echo "FAIL"
