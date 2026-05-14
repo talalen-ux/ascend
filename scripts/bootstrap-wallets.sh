@@ -24,7 +24,7 @@
 #   NUM_WALLETS=20         (mode A only — mode B uses file length)
 #   MINT_PER_WALLET=0.1    (mode A only)
 #   GAS_BUFFER=0.005       (mode A only — extra ETH for mint gas)
-#   GAS_RESERVE_PCT=20     (mode B — % of balance held back for gas)
+#   GAS_RESERVE_PCT=15     (mode B — % of balance held back for gas)
 #   MIN_MINT_AMOUNT=0.005  (mode B — skip wallets below this mint size)
 #   FORCE_FUND=1           (force mode A even if file exists)
 # --------------------------------------------------------------------
@@ -55,7 +55,7 @@ MINT_PER_WALLET=${MINT_PER_WALLET:-0.1}
 GAS_BUFFER=${GAS_BUFFER:-0.005}
 NUM_WALLETS=${NUM_WALLETS:-20}
 FORCE_FUND=${FORCE_FUND:-0}
-GAS_RESERVE_PCT=${GAS_RESERVE_PCT:-20}
+GAS_RESERVE_PCT=${GAS_RESERVE_PCT:-15}
 MIN_MINT_AMOUNT=${MIN_MINT_AMOUNT:-0.005}
 
 # Priority fee tip (gwei) for bootstrap mint txs. 5 gwei makes our txs
