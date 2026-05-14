@@ -93,14 +93,15 @@ export function marginalBurnPriceAt(q: number): number {
   return (S / (K - q)) * (1 - BURN_FEE_RATE);
 }
 
-/** Floor (exponential-curve monotone). Per-token redemption price at the
- *  current state. mintedFair is frozen across burns, so this only
- *  rises as either mintedFair grows (mints) or supply shrinks (burns).
- *      = (S / (K − mintedFair)) · (mintedFair / supply) · (1 − burnFee) */
+/** Per-token marginal burn rate at the current mintedFair, after fee.
+ *  Mirrors AscendHookV3.floor() exactly. Genuinely monotone non-decreasing:
+ *  mintedFair only grows, so (K − mF) only shrinks and the rate only rises.
+ *  Independent of currentSupply — burn-then-mint cannot push it down.
+ *      = (S / (K − mintedFair)) · (1 − burnFee) */
 export function floorOf(s: StateV3): number {
   const mF = s.mintedFair ?? curveSupplyAt(s.ethCum);
-  if (mF === 0 || mF >= K || s.supply <= 0) return 0;
-  return (S / (K - mF)) * (mF / s.supply) * (1 - BURN_FEE_RATE);
+  if (mF === 0 || mF >= K) return 0;
+  return (S / (K - mF)) * (1 - BURN_FEE_RATE);
 }
 
 /** Spot price (mint side, before fee). ETH per ascend. */
@@ -114,10 +115,11 @@ export function priceOf(s: StateV3): number {
  * 0.7% protocol fee, the block-age penalty (defaults to tier-1 / 90%
  * payout), and any active reserve bonus.
  *
- * Distinct from `floorOf()` (monotone aggregate). `floorOf` is the
- * per-token average if the entire supply were liquidated against the
- * frozen mintedFair — a conceptual long-term floor that only ever rises.
- * `livePerTokenBurnAt` is what a real burn pays at this instant.
+ * Distinct from `floorOf()`: `floorOf` is the curve's per-token marginal
+ * rate after the ETH-side fee only — a monotone non-decreasing floor.
+ * `livePerTokenBurnAt` applies the additional token-burn fee, the
+ * block-age penalty, and the reserve bonus on top, so it can be lower
+ * (penalty) or higher (bonus) depending on holder state.
  */
 export function livePerTokenBurnAt(s: StateV3, holdAgeBlocks: number = 0): number {
   const mF = s.mintedFair ?? curveSupplyAt(s.ethCum);

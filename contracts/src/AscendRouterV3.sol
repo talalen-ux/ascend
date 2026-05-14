@@ -16,7 +16,7 @@ import {Ascend} from "./Ascend.sol";
 /// @title  AscendRouter — thin unlock-callback router for the ascend V4 pool.
 ///
 /// @notice Wraps `PoolManager.unlock` + `swap` so EOAs can buy/sell ascend
-///         directly. Reads the canonical pool key from `AscendHookV2` once
+///         directly. Reads the canonical pool key from `AscendHookV3` once
 ///         at construction; holds no funds between transactions.
 ///
 ///         Buy:    msg.value ETH → ascend, sent to `recipient`

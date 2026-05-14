@@ -322,10 +322,10 @@ contract AscendHookV3 is BaseHook {
         if (ethIn == 0) revert MintTooSmall();
 
         // Three-way split of every mint:
-        //   1. fee   = 0.3% (10 bps after our split: 5 reserve / 5 tile? no, MINT_FEE_BPS=70)
-        //              actually MINT_FEE_BPS=70 is 0.7%; tile share = 20bps of that
+        //   1. fee     = 0.7% (MINT_FEE_BPS), with TILE_FEE_BPS (20 bps)
+        //                routed to TileEngine on sweep; remainder retained.
         //   2. surplus = 3% of post-fee → surplusReserve (overcollateralization)
-        //   3. curve = remainder → advances cumulativeEthIn
+        //   3. curve   = remainder → advances cumulativeEthIn
         uint256 totalFee = (ethIn * MINT_FEE_BPS) / FEE_DENOM;
         uint256 tileShare = (ethIn * TILE_FEE_BPS) / FEE_DENOM;
         if (tileShare > totalFee) tileShare = totalFee;
@@ -465,19 +465,25 @@ contract AscendHookV3 is BaseHook {
     // tile share to TileEngine, refresh the on-chain reserve view
     // -----------------------------------------------------------------
 
+    // Discriminators for unlockCallback. Both ops share the same payload
+    // shape `(uint8 op, uint256 amount)`, decoded once at the entry.
+    uint8 internal constant OP_SWEEP = 0;
+    uint8 internal constant OP_CLAIM_SETTLE = 1;
+
     function sweep() external {
         if (!isInitialized) revert NotInitialized();
-        poolManager.unlock(abi.encode(SweepData(tileAccrual)));
-    }
-
-    struct SweepData {
-        uint256 ethToTile;
+        poolManager.unlock(abi.encode(OP_SWEEP, tileAccrual));
     }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert UnsolicitedETH();
-        SweepData memory sd = abi.decode(data, (SweepData));
+        (uint8 op, uint256 amount) = abi.decode(data, (uint8, uint256));
+        if (op == OP_SWEEP) return _doSweep(amount);
+        if (op == OP_CLAIM_SETTLE) return _doClaimSettle(amount);
+        revert UnsolicitedETH();
+    }
 
+    function _doSweep(uint256 ethToTile) private returns (bytes memory) {
         // 1. Burn accumulated ascend claims and remove from supply.
         uint256 ascendClaims = poolManager.balanceOf(address(this), poolKey.currency1.toId());
         if (ascendClaims > 0) {
@@ -486,23 +492,36 @@ contract AscendHookV3 is BaseHook {
             ascend.burn(address(this), ascendClaims);
         }
 
-        // 2. Route tile share to TileEngine.
-        uint256 ethToTile = sd.ethToTile;
+        // 2. Route tile share to TileEngine. Track what actually moved so
+        //    the event reports the real amount on failure paths.
+        uint256 ethSentToTile = 0;
         if (ethToTile > 0 && ethToTile <= reserveEthInternal()) {
             poolManager.burn(address(this), _ETH.toId(), ethToTile);
             poolManager.take(_ETH, address(this), ethToTile);
             tileAccrual = 0;
-            // try/catch so a buggy TileEngine cannot brick sweep
+            // try/catch so a buggy TileEngine cannot brick sweep. On
+            // failure we settle the ETH back as a currency0 claim so it
+            // stays inside `reserveEth()`, and restore tileAccrual so a
+            // future sweep can retry.
             try tileEngine.depositReward{value: ethToTile}() {
-                // ok
+                ethSentToTile = ethToTile;
             } catch {
-                // ETH stays in hook contract; can be retried by re-routing
-                // through tileAccrual and another sweep.
+                poolManager.settle{value: ethToTile}();
+                poolManager.mint(address(this), _ETH.toId(), ethToTile);
                 tileAccrual = ethToTile;
             }
         }
 
-        emit Swept(ascendClaims, ethToTile, reserveEthInternal());
+        emit Swept(ascendClaims, ethSentToTile, reserveEthInternal());
+        return "";
+    }
+
+    function _doClaimSettle(uint256 amount) private returns (bytes memory) {
+        // Inside an unlock — settle the msg.value previously forwarded to
+        // the hook to PoolManager and mint an equal currency0 claim so
+        // reserveEth() reflects the curve obligation that just grew.
+        poolManager.settle{value: amount}();
+        poolManager.mint(address(this), _ETH.toId(), amount);
         return "";
     }
 
@@ -583,9 +602,13 @@ contract AscendHookV3 is BaseHook {
         mintedFair += mintAmount;
         currentSupply += mintAmount;
 
-        // Mint ascend directly to the recipient. ETH stays in this
-        // contract as part of the reserve (the receive() reject path is
-        // not triggered because msg.value arrives via the function call).
+        // Forward the inbound ETH to PoolManager as a currency0 (ETH)
+        // claim token so reserveEth() actually tracks the new curve
+        // obligation. Without this the curve grows by msg.value but the
+        // reserve does not, and future burns would eventually starve
+        // even though raw ETH was sitting on the hook.
+        poolManager.unlock(abi.encode(OP_CLAIM_SETTLE, msg.value));
+
         ascend.mint(recipient, mintAmount);
 
         emit ClaimMint(recipient, msg.value, mintAmount);
@@ -618,17 +641,23 @@ contract AscendHookV3 is BaseHook {
         return fwd > mintedFair ? fwd - mintedFair : 0;
     }
 
-    /// @notice Per-token burn redemption price (the monotone-floor formula). Floor only
-    ///         goes UP under both mints (mintedFair grows) and burns
-    ///         (currentSupply shrinks → ratio correction grows).
-    ///         = (S / (K − mF)) · (mF / currentSupply) · (1 − feeBps/10000)
+    /// @notice Per-token burn redemption price at the current curve
+    ///         position, after the ETH-side burn fee. This is the price
+    ///         a marginal burn pays per ascend, derived directly from
+    ///         the curve inverse `Δe = S · ln((K − mF + b)/(K − mF))`
+    ///         in the limit b → 0: `dΔe/db = S/(K − mF)`.
+    ///         = (S / (K − mF)) · (1 − burnFeeBps/10000)
+    ///
+    ///         Strictly monotone non-decreasing: `mintedFair` only ever
+    ///         grows (never decremented anywhere), so `K − mF` only
+    ///         shrinks and the per-token rate only rises. Independent
+    ///         of `currentSupply` by construction — a burn-then-mint
+    ///         sequence cannot push this number down.
     function floor() public view returns (uint256) {
-        if (currentSupply == 0) return 0;
         uint256 mF = mintedFair;
         if (mF == 0 || mF >= K) return 0;
-        UD60x18 marginal = div(mul(ud(S), ud(mF)), sub(ud(K), ud(mF)));
-        UD60x18 perToken = div(marginal, ud(currentSupply));
-        UD60x18 afterFee = mul(perToken, div(ud(FEE_DENOM - BURN_FEE_BPS), ud(FEE_DENOM)));
+        UD60x18 marginal = div(ud(S), sub(ud(K), ud(mF)));
+        UD60x18 afterFee = mul(marginal, div(ud(FEE_DENOM - BURN_FEE_BPS), ud(FEE_DENOM)));
         return intoUint256(afterFee);
     }
 

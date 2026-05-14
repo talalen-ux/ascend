@@ -26,7 +26,7 @@ interface IClaimSink {
 ///           - reward pool grows with trading volume → holders aligned
 ///             with usage growth
 ///
-///         Invariants (proofs in docs/V2_DESIGN.md):
+///         Invariants:
 ///           TI-1  reward-pool solvency (cumulative payouts ≤ pool)
 ///           TI-2  one-claim-per-epoch per address
 ///           TI-3  hook-only deposit (no third-party funding)
@@ -176,7 +176,7 @@ contract TileEngine {
     // constructor
     // -----------------------------------------------------------------
 
-    /// @param _hook   the AscendHookV2 that will fund the reward pool
+    /// @param _hook   the AscendHookV3 that will fund the reward pool
     /// @param _ascend the ERC-20 we check for MIN_HOLDING
     constructor(address _hook, IERC20 _ascend) {
         if (_hook == address(0) || address(_ascend) == address(0)) revert ZeroAddress();

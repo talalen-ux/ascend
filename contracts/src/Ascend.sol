@@ -41,8 +41,11 @@ contract Ascend is ERC20 {
 
     function _update(address from, address to, uint256 value) internal override {
         super._update(from, to, value);
-        // Skip on burns (to == 0) and on zero-value moves.
-        if (to != address(0) && value > 0) {
+        // Skip on burns (to == 0), zero-value moves, and self-transfers.
+        // Self-transfers can't change holdings, so the receive-block
+        // weighting would only re-anchor a holder's wRB forward (worse
+        // penalty for themselves) — no protocol benefit, just footgun.
+        if (to != address(0) && to != from && value > 0) {
             IHookReceiveCallback(hook).onTokenReceive(to, value);
         }
     }
