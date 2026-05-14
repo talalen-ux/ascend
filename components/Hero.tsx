@@ -48,7 +48,7 @@ export function Hero() {
           <Mark size={28} className="relative" />
         </div>
         <span className="text-[10px] font-medium uppercase tracking-widest2 text-ash">
-          ascend · a singular market structure mining protocol
+          ascend · fixed-supply mining on ethereum
         </span>
       </motion.div>
 
@@ -58,10 +58,10 @@ export function Hero() {
         transition={{ duration: 0.7, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
         className="relative mt-5 text-4xl font-medium leading-[1.04] tracking-tight text-bone md:text-[64px]"
       >
-        the floor only{" "}
         <span className="bg-gradient-to-r from-accent via-bone to-accent bg-[length:200%_100%] bg-clip-text text-transparent animate-shine">
-          ascends.
-        </span>
+          Ascend
+        </span>{" "}
+        Mining Protocol
       </motion.h1>
 
       <motion.p
@@ -70,10 +70,11 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.15 }}
         className="relative mt-6 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        ascend is a singular market structure mining protocol on
-        ethereum, where users mint ascend into existence.{" "}
-        <span className="text-bone">ASCEND</span> transforms market
-        activity into permanent structural reinforcement.
+        <span className="text-bone">ASCEND</span> is a fixed-supply
+        asset mined on ethereum. 100 million tokens. no presale, no
+        team, no admin keys. mint by sending ETH along an exponential
+        bonding curve; burn after holding to claim a share of the
+        protocol's growing surplus.
       </motion.p>
 
       <motion.p
@@ -82,10 +83,12 @@ export function Hero() {
         transition={{ duration: 0.6, delay: 0.22 }}
         className="relative mt-3 max-w-xl text-[15px] leading-relaxed text-ash"
       >
-        Alongside the core engine exists the{" "}
-        <span className="text-accent">Ascension Grid</span>: a
-        cryptographic surface embedded directly into the protocol's
-        economic flow. The floor only ascends.
+        patience is rewarded — the longer you hold, the more the curve
+        gives back. wired into the same contract is the{" "}
+        <span className="text-accent">Ascension Grid</span>: a 12×12
+        cryptographic lattice that turns trading activity into
+        protocol-funded rewards. every fee thickens the reserve. the
+        floor only ascends.
       </motion.p>
 
       <motion.div
