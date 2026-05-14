@@ -19,10 +19,20 @@ import {AscendRouterV3} from "../src/AscendRouterV3.sol";
 ///           2. Initialize the (ETH, ascend) V4 pool — no LP needed; the
 ///              hook handles all swap math via BeforeSwapDelta
 ///           3. AscendRouterV3
+///           4. (optional) Deployer locks position 0 on the curve via a
+///              first mint — happens in the same broadcast as deploy so
+///              no sniper can wedge between initialize and this mint.
+///              Controlled by DEPLOYER_FIRST_MINT_ETH (in wei). Default 0
+///              (no first mint). Combine with Flashbots Protect RPC for
+///              real protection — see scripts/deploy-mainnet.sh.
 ///
 ///         Required env vars:
-///           PRIVATE_KEY    deployer key
-///           POOL_MANAGER   canonical V4 PoolManager on the target chain
+///           PRIVATE_KEY                 deployer key
+///           POOL_MANAGER                canonical V4 PoolManager
+///         Optional env vars:
+///           DEPLOYER_FIRST_MINT_ETH     wei to mint from deployer as
+///                                       last step of deploy (e.g.,
+///                                       10_000_000_000_000_000 = 0.01 ETH)
 contract DeployV3 is Script {
     using PoolIdLibrary for PoolKey;
 
@@ -40,6 +50,8 @@ contract DeployV3 is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
         IPoolManager poolManager = IPoolManager(vm.envAddress("POOL_MANAGER"));
+        uint256 firstMintWei = vm.envOr("DEPLOYER_FIRST_MINT_ETH", uint256(0));
+        address deployerAddr = vm.addr(pk);
 
         uint160 flags = uint160(
             Hooks.AFTER_INITIALIZE_FLAG
@@ -71,12 +83,31 @@ contract DeployV3 is Script {
         poolManager.initialize(key, SENTINEL_SQRT_PRICE);
 
         AscendRouterV3 router = new AscendRouterV3(poolManager, hook);
+
+        // Optional sniper defence — lock position 0 on the curve as the
+        // last step of the deploy broadcast. All four txs (hook deploy,
+        // pool init, router deploy, first mint) come from the same
+        // deployer wallet with sequential nonces, so they MUST land in
+        // order from this account. Combined with Flashbots Protect on
+        // the RPC, snipers can't see the initialize tx until it's
+        // already mined, and they can't insert anything before the
+        // first-mint tx because the deployer's nonce sequence is fixed.
+        uint256 firstMintAmount;
+        if (firstMintWei > 0) {
+            firstMintAmount = router.buy{value: firstMintWei}(0, deployerAddr);
+        }
         vm.stopBroadcast();
 
         console2.log("AscendHookV3  :", address(hook));
         console2.log("ascend        :", address(hook.ascend()));
         console2.log("TileEngine    :", address(hook.tileEngine()));
         console2.log("AscendRouterV3:", address(router));
+        if (firstMintWei > 0) {
+            console2.log("deployer first mint ETH:");
+            console2.logUint(firstMintWei);
+            console2.log("deployer first mint ASCEND:");
+            console2.logUint(firstMintAmount);
+        }
         console2.log("currentSupply :");
         console2.logUint(hook.currentSupply());
         console2.log("cumEthIn      :");

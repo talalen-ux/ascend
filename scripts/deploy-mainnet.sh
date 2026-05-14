@@ -55,19 +55,31 @@ if [[ -n "${ETHERSCAN_API_KEY:-}" ]]; then
     VERIFY_NOTE="yes (Etherscan)"
 fi
 
+RPC_DOMAIN=$(echo "$MAINNET_RPC_URL" | awk -F/ '{print $3}')
+FIRST_MINT_ETH_DISPLAY="0 (disabled)"
+if [[ -n "${DEPLOYER_FIRST_MINT_ETH:-}" && "$DEPLOYER_FIRST_MINT_ETH" != "0" ]]; then
+    FIRST_MINT_ETH_DISPLAY=$(echo "scale=6; $DEPLOYER_FIRST_MINT_ETH / 1000000000000000000" | bc)" ETH"
+fi
+SNIPER_NOTE="public mempool"
+if [[ "$RPC_DOMAIN" == *"flashbots"* ]]; then
+    SNIPER_NOTE="PRIVATE (Flashbots Protect)"
+fi
+
 cat <<EOF
 ═══════════════════════════════════════════════════════════════
                 MAINNET DEPLOYMENT — PRE-FLIGHT
 ═══════════════════════════════════════════════════════════════
-  Chain         : Ethereum mainnet (chain id 1)
-  Block         : $BLOCK
-  Deployer      : $DEPLOYER
-  Balance       : $BAL_ETH ETH
-  Gas price now : $GAS_GWEI gwei
-  PoolManager   : $POOL_MANAGER
-  Estimate (gas): ~$EST_GAS
+  Chain          : Ethereum mainnet (chain id 1)
+  Block          : $BLOCK
+  Deployer       : $DEPLOYER
+  Balance        : $BAL_ETH ETH
+  Gas price now  : $GAS_GWEI gwei
+  PoolManager    : $POOL_MANAGER
+  Estimate (gas) : ~$EST_GAS
   Estimate (cost): ~$EST_COST_ETH ETH (at current gas)
-  Verify        : $VERIFY_NOTE
+  Verify         : $VERIFY_NOTE
+  RPC            : $RPC_DOMAIN ($SNIPER_NOTE)
+  First mint     : $FIRST_MINT_ETH_DISPLAY (locks position 0)
 ═══════════════════════════════════════════════════════════════
 
 THIS IS A PRODUCTION MAINNET DEPLOYMENT. The contracts will be
@@ -77,6 +89,7 @@ immutable on Ethereum forever. Triple-check:
   - Are the constants (K, S, fees, penalty curve) correct?
   - Is the deployer balance enough (~10x the cost estimate)?
   - Is this a calm gas window?
+  - Is the RPC private (Flashbots) for sniper protection?
 
 To proceed, type exactly:  DEPLOY MAINNET
 Anything else aborts.
